@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dark-web-fraud-agent"
+version = "0.1.0"
+description = "Multi-agent dark web fraud intelligence system using AWS Bedrock AgentCore"
+requires-python = ">=3.11"
+license = {text = "Proprietary"}
+authors = [
+    {name = "Dark Web Fraud Intelligence Team"}
+]
+
+dependencies = [
+    "stix2>=3.0.1",
+    "pymisp>=2.4.180",
+    "boto3>=1.34.0",
+    "pydantic>=2.5.0",
+    "stem>=1.8.1",
+    "opensearch-py>=2.4.0",
+    "requests-aws4auth>=1.2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "hypothesis>=6.92.0",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "moto[all]>=5.0.0",
+    "mypy>=1.8.0",
+    "ruff>=0.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "property: property-based tests using hypothesis",
+    "integration: integration tests requiring AWS services",
+    "unit: unit tests",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true

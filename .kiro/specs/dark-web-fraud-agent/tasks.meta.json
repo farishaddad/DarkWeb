@@ -1,0 +1,382 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Create project directory structure and Python package layout": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808185
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853820889
+      }
+    ],
+    "1.2 Implement shared data models and interfaces": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808286
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853932182
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781855936588
+      }
+    ],
+    "1.3 Implement configuration management and validation": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808335
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853933158
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781855937121
+      }
+    ],
+    "2.1 Implement CrawlResult model and S3 artifact storage": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808379
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781855949679
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781857036978
+      }
+    ],
+    "2.3 Implement Tor proxy connection and circuit rotation": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808403
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781857065399
+      },
+      {
+        "executionId": "6ab5b645-15a9-455c-99f4-be610bb6f623",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781864906264
+      }
+    ],
+    "2.4 Implement crawl_source with retry logic and circuit breaker": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808430
+      },
+      {
+        "executionId": "6ab5b645-15a9-455c-99f4-be610bb6f623",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781864915255
+      }
+    ],
+    "2.6 Implement agent health reporting and DynamoDB state tracking": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808458
+      }
+    ],
+    "3. Checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808484
+      }
+    ],
+    "4.1 Implement ClassifiedContent and ExtractedEntity models": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808515
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781855950317
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781856813836
+      }
+    ],
+    "4.2 Implement fraud relevance classification with Bedrock Guardrails": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808552
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781857066239
+      },
+      {
+        "executionId": "6ab5b645-15a9-455c-99f4-be610bb6f623",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781864907373
+      }
+    ],
+    "4.4 Implement entity extraction and technique categorization": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808578
+      },
+      {
+        "executionId": "6ab5b645-15a9-455c-99f4-be610bb6f623",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781864916234
+      },
+      {
+        "executionId": "5d2ef81c-4f43-4b16-b157-c7be2464de57",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781869858444
+      }
+    ],
+    "4.7 Implement severity scoring": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808617
+      },
+      {
+        "executionId": "6ab5b645-15a9-455c-99f4-be610bb6f623",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781864918001
+      },
+      {
+        "executionId": "6ab5b645-15a9-455c-99f4-be610bb6f623",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781866224316
+      }
+    ],
+    "5.1 Implement STIX 2.1 object creation (SDOs, SCOs, SROs)": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808639
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781857067461
+      }
+    ],
+    "5.3 Implement STIX serialization and deserialization": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808658
+      },
+      {
+        "executionId": "6ab5b645-15a9-455c-99f4-be610bb6f623",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781864917177
+      },
+      {
+        "executionId": "5d2ef81c-4f43-4b16-b157-c7be2464de57",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781869859372
+      }
+    ],
+    "5.5 Implement intelligence tier classification": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808682
+      },
+      {
+        "executionId": "6ab5b645-15a9-455c-99f4-be610bb6f623",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781864919307
+      },
+      {
+        "executionId": "6ab5b645-15a9-455c-99f4-be610bb6f623",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781866223180
+      }
+    ],
+    "5.8 Implement OpenSearch Serverless vector indexing": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808709
+      }
+    ],
+    "6. Checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808732
+      }
+    ],
+    "7.1 Implement STIX-to-MISP conversion": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808756
+      }
+    ],
+    "7.3 Implement MISP-to-STIX export and round-trip": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808778
+      }
+    ],
+    "8.1 Implement taxonomy loading and validation": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808812
+      }
+    ],
+    "8.3 Implement severity-to-threat-level mapping and tag application": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808834
+      }
+    ],
+    "8.6 Implement Galaxy cluster matching and unmatched content handling": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808863
+      }
+    ],
+    "9. Checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808890
+      }
+    ],
+    "10.1 Implement FraudAlert, AlertProvenance, and DetectionRule models": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808914
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781855951651
+      },
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781856814877
+      }
+    ],
+    "10.4 Implement campaign convergence detection": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808938
+      }
+    ],
+    "10.6 Implement alert publishing and summary digest generation": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808970
+      }
+    ],
+    "11.1 Implement PipelineOrchestrator and inter-agent message passing": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853808998
+      }
+    ],
+    "11.3 Implement agent fault isolation and health monitoring": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853809026
+      }
+    ],
+    "11.4 Implement EventBridge scheduling and initialization": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853809055
+      }
+    ],
+    "12.1 Create CDK stack for core infrastructure": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853809082
+      }
+    ],
+    "12.2 Create CDK stack for intelligence infrastructure": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853809113
+      }
+    ],
+    "12.3 Create CDK stack for pipeline orchestration": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853809143
+      }
+    ],
+    "13.1 Implement full pipeline integration": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853809169
+      }
+    ],
+    "14. Final checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781853809190
+      }
+    ],
+    "1. Set up project structure, shared models, and testing framework": [
+      {
+        "executionId": "d701bc20-1c30-42c0-b210-4b9712641f96",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781855937159
+      }
+    ],
+    "4. Implement Content Analyst Agent": [
+      {
+        "executionId": "5d2ef81c-4f43-4b16-b157-c7be2464de57",
+        "chatSessionId": "sess_f970b109-19ba-4533-9680-7d5ab91d9e5e",
+        "timestamp": 1781869858468
+      }
+    ]
+  }
+}

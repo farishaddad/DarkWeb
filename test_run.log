@@ -1,0 +1,9 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.4, pytest-9.1.0, pluggy-1.6.0 -- /Users/fahaddad/Documents/DarkWeb/.venv/bin/python3.14
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /Users/fahaddad/Documents/DarkWeb
+configfile: pyproject.toml
+plugins: cov-7.1.0, hypothesis-6.155.5, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... 
