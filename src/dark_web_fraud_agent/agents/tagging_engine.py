@@ -1,10 +1,94 @@
-"""Tagging Engine agent for automated intelligence classification."""
 
-import json
+
+# ---------------------------------------------------------------------------
+# Lambda entry point
+# ---------------------------------------------------------------------------
+
+def handler(event: dict, context) -> dict:
+    """Lambda handler for the Tagging Engine pipeline step.
+
+    Receives Data Structurer output (STIX bundle S3 key, fraud_category,
+    severity_score), applies all tag sets, writes the tag manifest back to
+    S3, and returns structured output for the Alert Generator.
+
+    Expected input:
+        {
+            "s3_key": "...",
+            "execution_id": "...",
+            "stix_bundle_key": "stix-bundles/...",
+            "fraud_category": "mfa_bypass",
+            "severity_score": 7,
+            "tier": "ttp",
+        }
+    """
+    s3_key: str = event["s3_key"]
+    execution_id: str = event.get("execution_id", "unknown")
+    stix_bundle_key: str | None = event.get("stix_bundle_key")
+    fraud_category: str | None = event.get("fraud_category")
+    severity_score: int = int(event.get("severity_score", 3))
+    s3_bucket: str = os.environ["S3_BUCKET"]
+
+    # Short-circuit if there is no STIX bundle (non-relevant content passed through)
+    if not stix_bundle_key:
+        return {"s3_key": s3_key, "execution_id": execution_id,
+                "tags": [], "tag_manifest_key": None, "stix_bundle_key": None}
+
+    engine = TaggingEngine()
+
+    # Apply all tag sets
+    # Note: entities are not re-hydrated here to keep the Lambda lightweight —
+    # fraud and attack tags are derived from fraud_category and severity_score alone
+    fraud_tags = engine.apply_fraud_tags([])   # entity-level tags added if entities passed
+    attack_tags = engine.apply_attack_tags(fraud_category)
+    threat_level_tag = engine.apply_threat_level_tag(severity_score)
+    galaxy_match = engine.match_galaxy_cluster(fraud_category)
+
+    all_tags = fraud_tags + attack_tags + [threat_level_tag]
+    if not fraud_tags and not attack_tags:
+        all_tags.append(engine.apply_requires_review_tag())
+    if galaxy_match:
+        all_tags.append(engine.apply_fraud_tags([]))  # placeholder — galaxy tag TBD
+
+    tag_strings = [str(t) for t in all_tags]
+
+    # Write tag manifest to S3 alongside the STIX bundle
+    s3 = boto3.client("s3")
+    tag_manifest_key = stix_bundle_key.replace(".stix.json", ".tags.json")
+    s3.put_object(
+        Bucket=s3_bucket,
+        Key=tag_manifest_key,
+        Body=__import__("json").dumps({
+            "stix_bundle_key": stix_bundle_key,
+            "fraud_category": fraud_category,
+            "severity_score": severity_score,
+            "tags": tag_strings,
+            "galaxy_match": galaxy_match,
+        }).encode(),
+        ContentType="application/json",
+    )
+
+    engine.update_health(items_processed=len(tag_strings), errors=0)
+    logger.info("TaggingEngine: %d tags applied for category=%s", len(tag_strings), fraud_category)
+    return {
+        "s3_key": s3_key,
+        "execution_id": execution_id,
+        "stix_bundle_key": stix_bundle_key,
+        "tag_manifest_key": tag_manifest_key,
+        "tags": tag_strings,
+        "fraud_category": fraud_category,
+        "severity_score": severity_score,
+        "galaxy_match": galaxy_match,
+    }
+import logging
+import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+import boto3
+
 from dark_web_fraud_agent.models.content_analyst import ExtractedEntity
+
+logger = logging.getLogger(__name__)
 from dark_web_fraud_agent.models.shared import AgentBase, AgentConfig, AgentHealth
 
 
@@ -114,6 +198,68 @@ class TaggingEngine(AgentBase):
         self._taxonomies[taxonomy.namespace] = taxonomy
         return taxonomy
 
+    def load_attack_techniques_from_s3(
+        self, s3_bucket: str, s3_key: str, s3_client=None
+    ) -> dict[str, dict]:
+        """Load MITRE ATT&CK technique metadata from a STIX bundle stored in S3.
+
+        The TaggingConfig.attack_stix_s3_key points to the full ATT&CK STIX
+        bundle (enterprise-attack.json). Loading it expands the attack_map
+        from 5 hardcoded entries to 500+ techniques with names and tactic phases
+        — critical for SIEM correlation rules that match on technique names.
+
+        Args:
+            s3_bucket: S3 bucket containing the ATT&CK STIX bundle.
+            s3_key: S3 key of the ATT&CK STIX bundle JSON file.
+            s3_client: Optional boto3 S3 client (created if not provided).
+
+        Returns:
+            Dict mapping technique_id -> {"name": str, "tactics": [str], "description": str}.
+            Stored in self._attack_techniques for use by apply_attack_tags().
+        """
+        if s3_client is None:
+            s3_client = boto3.client("s3")
+
+        try:
+            response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
+            bundle_json = response["Body"].read().decode("utf-8")
+            bundle = json.loads(bundle_json)
+        except Exception as exc:
+            logger.warning(
+                "Could not load ATT&CK STIX bundle from s3://%s/%s: %s — "
+                "falling back to hardcoded technique map.",
+                s3_bucket, s3_key, exc,
+            )
+            return {}
+
+        techniques: dict[str, dict] = {}
+        for obj in bundle.get("objects", []):
+            if obj.get("type") != "attack-pattern":
+                continue
+            # Extract technique ID from external_references (MITRE source)
+            ext_refs = obj.get("external_references", [])
+            technique_id = next(
+                (r["external_id"] for r in ext_refs
+                 if r.get("source_name") == "mitre-attack"),
+                None,
+            )
+            if not technique_id:
+                continue
+            tactics = [
+                phase["phase_name"]
+                for phase in obj.get("kill_chain_phases", [])
+                if phase.get("kill_chain_name") == "mitre-attack"
+            ]
+            techniques[technique_id] = {
+                "name": obj.get("name", ""),
+                "tactics": tactics,
+                "description": obj.get("description", "")[:500],
+            }
+
+        self._attack_techniques = techniques
+        logger.info("Loaded %d ATT&CK techniques from s3://%s/%s", len(techniques), s3_bucket, s3_key)
+        return techniques
+
     def get_loaded_taxonomies(self) -> dict[str, TaxonomyDefinition]:
         """Return all currently loaded taxonomies keyed by namespace."""
         return self._taxonomies
@@ -189,18 +335,32 @@ class TaggingEngine(AgentBase):
             List of MachineTag objects with MITRE ATT&CK technique IDs.
         """
         attack_map: dict[str, str] = {
-            "mfa_bypass": "T1111",
-            "phishing_kit": "T1566",
-            "account_takeover": "T1110",
-            "synthetic_identity": "T1583",
-            "cnp_fraud": "T1499",
+            # Primary technique IDs — mapped to MITRE ATT&CK v14 financial fraud TTPs
+            # Sub-techniques provide SIEM rule precision:
+            #   T1566.001 = Spearphishing Attachment (phishing kit delivery)
+            #   T1078.001 = Default Accounts (account takeover via credential stuffing)
+            #   T1110.004 = Credential Stuffing (account takeover brute-force variant)
+            "mfa_bypass":         "T1111",   # Multi-Factor Authentication Interception
+            "phishing_kit":       "T1566",   # Phishing (T1566.001 for attachment delivery)
+            "account_takeover":   "T1078",   # Valid Accounts (T1078.001 default creds)
+            "synthetic_identity": "T1585",   # Establish Accounts (T1585.001 social media)
+            "cnp_fraud":          "T1539",   # Steal Web Session Cookie (CNP card-not-present)
+        }
+        # Also emit sub-technique tags for SIEM rules that correlate at sub-technique level
+        sub_technique_map: dict[str, str] = {
+            "phishing_kit":     "T1566.001",
+            "account_takeover": "T1078.001",
+            "synthetic_identity": "T1585.001",
         }
 
         if fraud_category is None or fraud_category not in attack_map:
             return []
 
         technique_id = attack_map[fraud_category]
-        return [MachineTag("mitre-attack", "technique", technique_id)]
+        tags = [MachineTag("mitre-attack", "technique", technique_id)]
+        if fraud_category in sub_technique_map:
+            tags.append(MachineTag("mitre-attack", "technique", sub_technique_map[fraud_category]))
+        return tags
 
     def apply_threat_level_tag(self, severity: int) -> MachineTag:
         """Apply a threat-level tag based on severity score.

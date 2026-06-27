@@ -118,10 +118,17 @@ def _strip_html_tags(html_content: str) -> str:
     Returns:
         Plain text with HTML tags removed.
     """
-    clean = re.sub(r"<[^>]+>", "", html_content)
-    # Collapse whitespace
-    clean = re.sub(r"\s+", " ", clean).strip()
-    return clean
+    # BeautifulSoup handles malformed markup, unclosed tags, inline JS, and
+    # non-ASCII encodings common on dark web forums.
+    # Regex-based stripping silently fails on all of these.
+    try:
+        from bs4 import BeautifulSoup
+        return BeautifulSoup(html_content, "html.parser").get_text(separator=" ", strip=True)
+    except ImportError:
+        # Fallback if beautifulsoup4 not in Lambda layer
+        clean = re.sub(r"<[^>]+>", "", html_content)
+        clean = re.sub(r"\s+", " ", clean).strip()
+        return clean
 
 
 def compute_content_hash(content: str) -> str:

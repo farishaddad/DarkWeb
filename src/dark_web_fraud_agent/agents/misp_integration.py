@@ -57,6 +57,12 @@ class MISPIntegration:
         """
         event = MISPEvent()
         event.info = f"Dark Web Intel: {len(bundle.objects)} STIX objects"
+        # Production-required fields — missing these causes MISP to use instance
+        # defaults, which may share intelligence beyond the intended audience.
+        event.distribution = 1      # 1 = This community only (not 0=org-only or 3=all)
+        event.threat_level_id = 2   # 2 = Medium (1=High, 3=Low, 4=Undefined)
+        event.analysis = 1          # 1 = Ongoing (0=Initial, 2=Completed)
+        event.org = "DARK-WEB-FRAUD-AGENT"
 
         for obj in bundle.objects:
             if obj.type in STIX_TO_MISP_TYPE_MAP:
@@ -232,4 +238,7 @@ class MISPIntegration:
             return str(response)
         except Exception as e:
             logger.error("Failed to create MISP event: %s", e)
-            return f"error-{uuid.uuid4()}"
+            # Re-raise so Step Functions marks the task as failed and routes to
+            # the DLQ — do NOT return a fake "error-<uuid>" ID that looks like
+            # success and causes silent intelligence data loss.
+            raise

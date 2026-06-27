@@ -11,6 +11,9 @@ Uses the `stix2` (cti-python-stix2) library for schema-validated object construc
 """
 
 import json
+import os
+import os
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Optional
@@ -45,7 +48,9 @@ class StructurerConfig:
 
 # Mapping from entity_type to the appropriate STIX SDO creation logic
 _SDO_CATEGORY_MAP = {
-    "bank_name": "threat-actor",
+    # CORRECTED: bank_name entities are TARGET INSTITUTIONS (victims), not threat actors.
+    # They are modelled as stix2.Identity(identity_class="organization").
+    "bank_name": "identity",
     "fraud_technique": "attack-pattern",
 }
 
@@ -73,6 +78,9 @@ class DataStructurer:
             config: Optional configuration for OpenSearch, MISP, and S3 integration.
         """
         self._config = config
+        # Clients are NOT created here — they are injected at module level for
+        # Lambda connection reuse (see _bedrock_client / _opensearch_client below).
+        # These instance attributes remain as fallback for unit tests.
         self._opensearch_client = None
         self._bedrock_client = None
 
@@ -102,7 +110,11 @@ class DataStructurer:
         # Resolve the target SDO type
         sdo_type = self._resolve_sdo_type(entity, category)
 
-        if sdo_type == "threat-actor":
+        if sdo_type == "identity":
+            # bank_name entities are victim institutions — modelled as Identity, not ThreatActor
+            return self._create_institution_identity(entity)
+        elif sdo_type == "threat-actor":
+            # Kept for genuine threat-actor category hints from other callers
             return self._create_threat_actor(entity)
         elif sdo_type == "attack-pattern":
             return self._create_attack_pattern(entity, category)
@@ -469,6 +481,31 @@ class DataStructurer:
             confidence=int(entity.confidence * 100),
         )
 
+    def _create_institution_identity(self, entity: ExtractedEntity) -> stix2.Identity:
+        """Create a STIX Identity SDO for a target financial institution.
+
+        Banks and financial organisations extracted from dark web content are
+        VICTIMS, not threat actors. They must be modelled as stix2.Identity
+        (identity_class="organization") with a 'targets' relationship FROM the
+        threat actor TO the institution — not as ThreatActor objects.
+
+        Args:
+            entity: bank_name entity extracted by the Content Analyst.
+
+        Returns:
+            A STIX 2.1 Identity object representing the target institution.
+        """
+        return stix2.Identity(
+            name=entity.value,
+            identity_class="organization",
+            description=(
+                f"Target financial institution identified in dark web content: "
+                f"{entity.context[:200]}"
+                if entity.context
+                else f"Target institution: {entity.value}"
+            ),
+        )
+
     def _create_attack_pattern(
         self, entity: ExtractedEntity, category: str
     ) -> stix2.v21.sdo.AttackPattern:
@@ -507,7 +544,8 @@ class DataStructurer:
             description=f"Detection indicator from dark web intelligence: {entity.context[:200]}" if entity.context else f"Indicator for {entity.entity_type}: {entity.value}",
             pattern=pattern,
             pattern_type="stix",
-            valid_from="2024-01-01T00:00:00Z",
+            # Use actual crawl time — hardcoded 2024 date caused SIEM to de-prioritise all indicators
+            valid_from=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         )
 
     def _create_malware(self, entity: ExtractedEntity) -> stix2.v21.sdo.Malware:
@@ -600,7 +638,7 @@ class DataStructurer:
 
     # --- OpenSearch Serverless Vector Indexing ---
 
-    async def index_to_opensearch(self, bundle: stix2.Bundle, metadata: dict) -> list[str]:
+    def index_to_opensearch(self, bundle: stix2.Bundle, metadata: dict) -> list[str]:
         """Index STIX objects into OpenSearch Serverless VECTORSEARCH collection.
 
         Generates embeddings via Bedrock and indexes each STIX object with
@@ -627,7 +665,7 @@ class DataStructurer:
                 "fraud_category": metadata.get("fraud_category"),
                 "content_summary": self._get_object_summary(obj),
                 "created_at": datetime.now(UTC).isoformat(),
-                "intelligence_vector": await self._generate_embedding(obj),
+                "intelligence_vector": self._generate_embedding(obj),
             }
 
             response = self._opensearch_client.index(
@@ -638,10 +676,11 @@ class DataStructurer:
 
         return doc_ids
 
-    async def _generate_embedding(self, stix_obj) -> list[float]:
+    def _generate_embedding(self, stix_obj) -> list[float]:
         """Generate vector embedding for a STIX object using Bedrock."""
         if self._bedrock_client is None:
-            self._bedrock_client = boto3.client("bedrock-runtime")
+            # Use module-level client if available (Lambda warm invocation)
+            self._bedrock_client = _bedrock_client if '_bedrock_client' in dir() else boto3.client("bedrock-runtime")
 
         text = self._get_object_summary(stix_obj)
         response = self._bedrock_client.invoke_model(
@@ -669,7 +708,8 @@ class DataStructurer:
         from requests_aws4auth import AWS4Auth
 
         credentials = boto3.Session().get_credentials()
-        region = self._config.opensearch_endpoint.split(".")[1] if self._config else "us-east-1"
+        # Use Lambda env var for region — don't parse from endpoint (fragile)
+        region = os.environ.get("AWS_REGION", "eu-west-1")
         awsauth = AWS4Auth(
             credentials.access_key,
             credentials.secret_key,
@@ -677,6 +717,126 @@ class DataStructurer:
             "aoss",
             session_token=credentials.token,
         )
+
+
+# ---------------------------------------------------------------------------
+# Lambda entry point
+# ---------------------------------------------------------------------------
+
+# Module-level clients — reused across warm invocations
+_bedrock_client = boto3.client("bedrock-runtime")
+
+
+def handler(event: dict, context) -> dict:
+    """Lambda handler for the Data Structurer pipeline step.
+
+    Receives Content Analyst output, creates a STIX 2.1 Bundle, generates
+    Bedrock embeddings, indexes into OpenSearch Serverless, and serialises
+    the bundle to S3 for the Tagging Engine.
+
+    Expected input (from analyst_result.analyst_output in Step Functions):
+        {
+            "s3_key": "...",
+            "execution_id": "...",
+            "is_fraud_relevant": true,
+            "confidence": 0.92,
+            "fraud_category": "mfa_bypass",
+            "severity_score": 7,
+            "entities": [{"entity_type": "ip_address", "value": "...", ...}],
+        }
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    s3_key: str = event["s3_key"]
+    execution_id: str = event.get("execution_id", "unknown")
+    is_relevant: bool = event.get("is_fraud_relevant", False)
+    s3_bucket: str = os.environ["S3_BUCKET"]
+
+    if not is_relevant:
+        # Non-relevant content — pass through without structuring
+        return {"s3_key": s3_key, "execution_id": execution_id, "stix_bundle_key": None,
+                "stix_object_count": 0, "opensearch_doc_ids": []}
+
+    config = StructurerConfig(
+        opensearch_endpoint=os.environ["OPENSEARCH_ENDPOINT"],
+        opensearch_collection_name=os.environ.get("OPENSEARCH_INDEX", "threat-intel"),
+        misp_url=os.environ.get("MISP_URL", ""),
+        misp_secret_arn=os.environ.get("MISP_SECRET_ARN", ""),
+        bedrock_embedding_model_id=os.environ.get(
+            "BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"
+        ),
+        s3_bucket=s3_bucket,
+    )
+    structurer = DataStructurer(config)
+    structurer._bedrock_client = _bedrock_client  # inject warm client
+
+    # Rebuild ExtractedEntity objects from Step Functions payload
+    from dark_web_fraud_agent.models.content_analyst import ClassifiedContent, ExtractedEntity
+    entities = [
+        ExtractedEntity(
+            entity_type=e["entity_type"], value=e["value"],
+            context=e.get("context", ""), confidence=float(e.get("confidence", 0.8)),
+        )
+        for e in event.get("entities", [])
+    ]
+    classification = ClassifiedContent(
+        source_ref=s3_key,
+        is_fraud_relevant=True,
+        confidence=float(event.get("confidence", 0.8)),
+        requires_manual_review=False,
+        severity_score=int(event.get("severity_score", 3)),
+        fraud_category=event.get("fraud_category"),
+        entities=entities,
+    )
+
+    # Build STIX bundle
+    stix_objects = []
+    fraud_category = event.get("fraud_category")
+    for entity in entities:
+        try:
+            if entity.entity_type in ("ip_address", "url", "email", "btc_wallet"):
+                stix_objects.append(structurer.create_stix_sco(entity))
+            elif fraud_category:
+                stix_objects.append(structurer.create_stix_sdo(entity, fraud_category))
+        except ValueError as exc:
+            logger.warning("Skipping entity %s: %s", entity.value, exc)
+
+    if not stix_objects:
+        return {"s3_key": s3_key, "execution_id": execution_id, "stix_bundle_key": None,
+                "stix_object_count": 0, "opensearch_doc_ids": []}
+
+    bundle = structurer.build_bundle(stix_objects)
+    tier = structurer.classify_tier(classification)
+    metadata = {
+        "tier": tier.value,
+        "severity_score": classification.severity_score,
+        "confidence": classification.confidence,
+        "fraud_category": fraud_category,
+    }
+
+    # Index to OpenSearch (sync — async removed)
+    doc_ids = structurer.index_to_opensearch(bundle, metadata)
+
+    # Serialise bundle to S3 for Tagging Engine
+    bundle_json = structurer.serialize_bundle(bundle)
+    s3 = boto3.client("s3")
+    bundle_key = f"stix-bundles/{s3_key.split('/', 2)[-1]}.stix.json"
+    s3.put_object(Bucket=s3_bucket, Key=bundle_key, Body=bundle_json.encode(),
+                  ContentType="application/json")
+
+    structurer.update_health(items_processed=len(stix_objects), errors=0)
+    logger.info("DataStructurer complete: %d objects, tier=%s", len(stix_objects), tier.value)
+    return {
+        "s3_key": s3_key,
+        "execution_id": execution_id,
+        "stix_bundle_key": bundle_key,
+        "stix_object_count": len(stix_objects),
+        "opensearch_doc_ids": doc_ids,
+        "tier": tier.value,
+        "fraud_category": fraud_category,
+        "severity_score": classification.severity_score,
+    }
 
         return OpenSearch(
             hosts=[{"host": self._config.opensearch_endpoint.replace("https://", ""), "port": 443}],

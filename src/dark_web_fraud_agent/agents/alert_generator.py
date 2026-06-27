@@ -1,12 +1,208 @@
-"""Alert Generator agent for campaign convergence and alert publishing."""
 
+# ---------------------------------------------------------------------------
+# Sigma rule generator + ATT&CK logsource maps
+# ---------------------------------------------------------------------------
+
+_SIGMA_LOGSOURCE_MAP = {
+    "T1111": {"category": "authentication", "product": "windows"},
+    "T1566": {"category": "webserver"},
+    "T1078": {"category": "authentication"},
+    "T1585": {"category": "network"},
+    "T1539": {"category": "proxy"},
+}
+
+_SIGMA_TITLE_MAP = {
+    "T1111": "MFA Interception Detected",
+    "T1566": "Phishing Kit Deployment Detected",
+    "T1078": "Account Takeover via Valid Credentials",
+    "T1585": "Synthetic Identity Account Creation",
+    "T1539": "Card-Not-Present Session Cookie Theft",
+}
+
+
+def _generate_sigma_rule(ttp_reference: str, ttp_description: str) -> str:
+    """Generate a syntactically valid Sigma YAML detection rule.
+
+    Required Sigma fields: title, id, status, description, logsource,
+    detection, condition, falsepositives, level.
+    """
+    import uuid as _uuid
+    import datetime as _dt
+
+    technique_id = None
+    if "=" in ttp_reference:
+        technique_id = ttp_reference.split("=")[-1].strip()
+    elif len(ttp_reference) >= 5 and ttp_reference.startswith("T"):
+        technique_id = ttp_reference
+
+    logsource = _SIGMA_LOGSOURCE_MAP.get(technique_id, {"category": "security"})
+    title = _SIGMA_TITLE_MAP.get(technique_id, f"Dark Web Campaign: {ttp_reference[:60]}")
+    logsource_lines = "\n    ".join(f"{k}: {v}" for k, v in logsource.items())
+    attack_tag = (
+        f"attack.{technique_id.lower().replace('.', '_')}"
+        if technique_id else "attack.t0000"
+    )
+
+    return (
+        f"title: {title}\n"
+        f"id: {_uuid.uuid4()}\n"
+        f"status: experimental\n"
+        f"description: |\n"
+        f"    Auto-generated from dark web campaign convergence.\n"
+        f"    TTP: {ttp_reference}\n"
+        f"    Context: {ttp_description[:200]}\n"
+        f"references:\n"
+        f"    - https://attack.mitre.org/techniques/{technique_id or 'T0000'}/\n"
+        f"author: dark-web-fraud-agent\n"
+        f"date: {_dt.date.today().isoformat()}\n"
+        f"tags:\n"
+        f"    - {attack_tag}\n"
+        f"logsource:\n"
+        f"    {logsource_lines}\n"
+        f"detection:\n"
+        f"    selection:\n"
+        f"        EventID|contains:\n"
+        f"            - '4625'\n"
+        f"            - '4648'\n"
+        f"    condition: selection\n"
+        f"falsepositives:\n"
+        f"    - Legitimate authentication activity\n"
+        f"    - Security testing\n"
+        f"level: high\n"
+    )
+
+
+
+# ---------------------------------------------------------------------------
+# Lambda entry point
+# ---------------------------------------------------------------------------
+
+# Module-level SNS client — reused across warm invocations
+_sns_client = boto3.client("sns")
+
+
+def handler(event: dict, context) -> dict:
+    """Lambda handler for the Alert Generator pipeline step.
+
+    Handles two invocation paths:
+
+    1. Step Functions (scheduled pipeline):
+       Receives Tagging Engine output, tracks the TTP in DynamoDB, checks
+       for campaign convergence (3+ items referencing same TTP), and
+       publishes a campaign alert to SNS if threshold is crossed.
+
+    2. DynamoDB Streams (reactive):
+       Triggered by INSERT events on ConvergenceTable. Evaluates each
+       new item's TTP reference for convergence immediately rather than
+       waiting for the next pipeline cycle.
+
+    Expected input (Step Functions path):
+        {
+            "s3_key": "...",
+            "execution_id": "...",
+            "stix_bundle_key": "...",
+            "tags": [...],
+            "fraud_category": "mfa_bypass",
+            "severity_score": 7,
+        }
+    """
+    import json as _json
+    import logging
+    logger = logging.getLogger(__name__)
+
+    sns_topic_arn: str = os.environ["SNS_TOPIC_ARN"]
+    high_severity_threshold: int = int(os.environ.get("HIGH_SEVERITY_THRESHOLD", "7"))
+
+    generator = AlertGenerator(
+        convergence_window=__import__("datetime").timedelta(hours=24)
+    )
+
+    # --- DynamoDB Streams path ---
+    # When invoked from Streams, event has "Records" not pipeline keys
+    if "Records" in event:
+        published = []
+        for record in event["Records"]:
+            if record.get("eventName") != "INSERT":
+                continue
+            new_image = record.get("dynamodb", {}).get("NewImage", {})
+            ttp_ref = new_image.get("ttp_reference", {}).get("S", "")
+            if not ttp_ref:
+                continue
+            converged = generator.check_campaign_convergence(ttp_ref)
+            if converged:
+                alert = generator.generate_campaign_alert(
+                    ttp_reference=ttp_ref,
+                    ttp_description=f"Campaign convergence detected: {ttp_ref}",
+                    affected_institutions=[],
+                    related_ids=converged,
+                    source_url="dynamodb-streams",
+                    crawl_timestamp=__import__("datetime").datetime.now(
+                        __import__("datetime").timezone.utc
+                    ),
+                )
+                mid = generator.publish_alert(alert, sns_topic_arn, _sns_client)
+                published.append(mid)
+        return {"published_alerts": published}
+
+    # --- Step Functions pipeline path ---
+    s3_key: str = event.get("s3_key", "")
+    execution_id: str = event.get("execution_id", "unknown")
+    stix_bundle_key: str | None = event.get("stix_bundle_key")
+    fraud_category: str | None = event.get("fraud_category")
+    severity_score: int = int(event.get("severity_score", 3))
+
+    alert_published = None
+    convergence_ids = None
+
+    if stix_bundle_key and fraud_category:
+        # Derive a stable TTP reference key from the fraud_category + tag fingerprint
+        tags = event.get("tags", [])
+        attack_tags = [t for t in tags if t.startswith("mitre-attack:")]
+        ttp_ref = attack_tags[0] if attack_tags else f"fraud:{fraud_category}"
+
+        # Track this item for convergence (written to DynamoDB with TTL)
+        generator.track_item(
+            stix_id=stix_bundle_key,
+            ttp_reference=ttp_ref,
+            tier=event.get("tier", "observable"),
+        )
+
+        # Check convergence — or immediate alert on high severity
+        convergence_ids = generator.check_campaign_convergence(ttp_ref)
+        immediate_alert = severity_score >= high_severity_threshold
+
+        if convergence_ids or immediate_alert:
+            from datetime import datetime, timezone
+            alert = generator.generate_campaign_alert(
+                ttp_reference=ttp_ref,
+                ttp_description=f"[{fraud_category}] Campaign or high-severity intelligence detected",
+                affected_institutions=[],
+                related_ids=convergence_ids or [stix_bundle_key],
+                source_url=s3_key,
+                crawl_timestamp=datetime.now(timezone.utc),
+            )
+            alert_published = generator.publish_alert(alert, sns_topic_arn, _sns_client)
+            generator.update_health(items_processed=1, errors=0)
+        logger.info("AlertGenerator: published alert %s for TTP %s", alert_published, ttp_ref)
+
+    return {
+        "s3_key": s3_key,
+        "execution_id": execution_id,
+        "stix_bundle_key": stix_bundle_key,
+        "fraud_category": fraud_category,
+        "severity_score": severity_score,
+        "convergence_ids": convergence_ids,
+        "alert_published": alert_published,
+    }
 import json
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Optional
 
 import boto3
+from boto3.dynamodb.conditions import Attr, Key
 
 from dark_web_fraud_agent.models.alerts import (
     AlertProvenance,
@@ -42,39 +238,49 @@ class AlertGenerator(AgentBase):
             config = AgentConfig(agent_id="alert-generator", agent_name="Alert Generator")
         super().__init__(config)
         self._convergence_window = convergence_window
-        self._convergence_tracker: dict[str, list[ConvergenceItem]] = {}  # TTP ID -> items
+        # In-memory tracker kept for unit tests only. Lambda production path
+        # uses DynamoDB (track_item / check_campaign_convergence below).
+        self._convergence_tracker: dict[str, list[ConvergenceItem]] = {}
 
     def get_health(self) -> AgentHealth:
-        """Return the current health status of the Alert Generator."""
-        return self._health
+
+    def _get_convergence_table(self):
+        """Return the DynamoDB Table resource (env var injected by CDK)."""
+        table_name = os.environ.get("DYNAMODB_CONVERGENCE_TABLE", "dark-web-fraud-convergence")
+        return boto3.resource("dynamodb").Table(table_name)
+
 
     def track_item(self, stix_id: str, ttp_reference: str, tier: str) -> None:
-        """Track an intelligence item for campaign convergence detection.
+        """Track an intelligence item in DynamoDB for campaign convergence.
 
-        Items are associated with a TTP reference and timestamped. Expired items
-        (older than the convergence window) are pruned on each call.
+        Items are written with a TTL so DynamoDB auto-expires them when the
+        convergence window closes — no manual pruning needed.
         """
-        item = ConvergenceItem(
-            stix_id=stix_id,
-            ttp_reference=ttp_reference,
-            tier=tier,
-            timestamp=datetime.now(UTC),
-        )
-        if ttp_reference not in self._convergence_tracker:
-            self._convergence_tracker[ttp_reference] = []
-        self._convergence_tracker[ttp_reference].append(item)
-        # Prune expired items
-        self._prune_expired(ttp_reference)
+        table = self._get_convergence_table()
+        ttl = int((datetime.now(UTC) + self._convergence_window).timestamp())
+        table.put_item(Item={
+            "PK": f"CONV#{ttp_reference}",
+            "SK": f"ITEM#{stix_id}",
+            "stix_id": stix_id,
+            "ttp_reference": ttp_reference,
+            "tier": tier,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "TTL": ttl,
+        })
 
     def check_campaign_convergence(self, ttp_reference: str) -> Optional[list[str]]:
-        """Check if 3+ items converge around a TTP within the time window.
+        """Check if 3+ items reference the same TTP within the convergence window.
 
-        Returns list of STIX IDs if convergence detected, None otherwise.
+        Queries DynamoDB ConvergenceTable — items are auto-expired by TTL.
+        Returns list of STIX IDs if convergence is detected, None otherwise.
         """
-        self._prune_expired(ttp_reference)
-        items = self._convergence_tracker.get(ttp_reference, [])
+        table = self._get_convergence_table()
+        resp = table.query(
+            KeyConditionExpression=Key("PK").eq(f"CONV#{ttp_reference}"),
+        )
+        items = resp.get("Items", [])
         if len(items) >= 3:
-            return [item.stix_id for item in items]
+            return [item["stix_id"] for item in items]
         return None
 
     def generate_campaign_alert(
@@ -100,7 +306,7 @@ class AlertGenerator(AgentBase):
             recommended_detection_rules=[
                 DetectionRule(
                     rule_type="sigma",
-                    rule_content=f"title: Campaign for {ttp_reference}",
+                    rule_content=_generate_sigma_rule(ttp_reference, ttp_description),
                     confidence=0.8,
                 )
             ],
@@ -130,7 +336,7 @@ class AlertGenerator(AgentBase):
                 if item.timestamp > cutoff
             ]
 
-    async def publish_alert(
+    def publish_alert(
         self,
         alert: FraudAlert,
         sns_topic_arn: str,

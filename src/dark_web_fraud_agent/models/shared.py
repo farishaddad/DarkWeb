@@ -118,6 +118,75 @@ class AgentBase(ABC):
         """Return the agent's configuration."""
         return self._config
 
+    def update_health(
+        self,
+        *,
+        items_processed: int = 0,
+        errors: int = 0,
+        bedrock_tokens: int = 0,
+        bedrock_errors: int = 0,
+        window_seconds: float = 300.0,
+    ) -> None:
+        """Update health metrics and emit CloudWatch Embedded Metric Format logs.
+
+        Call this at the end of each agent invocation from the Lambda handler.
+        EMF logs are written to stdout and automatically converted to CloudWatch
+        custom metrics by the Lambda runtime — zero additional API calls.
+
+        Args:
+            items_processed: Number of items successfully processed this invocation.
+            errors: Number of errors encountered this invocation.
+            bedrock_tokens: Bedrock tokens consumed (from invoke_model response).
+            bedrock_errors: Number of Bedrock throttle/error responses.
+            window_seconds: Length of the measurement window in seconds.
+        """
+        now = datetime.now(UTC)
+        elapsed = (now - self._health.last_heartbeat).total_seconds() or window_seconds
+
+        # Update throughput (items per minute) as exponential moving average
+        throughput = (items_processed / elapsed) * 60.0
+        alpha = 0.3  # EMA smoothing factor
+        self._health.processing_throughput = (
+            alpha * throughput + (1 - alpha) * self._health.processing_throughput
+        )
+
+        total = items_processed + errors
+        if total > 0:
+            self._health.error_rate = errors / total
+        self._health.bedrock_token_count += bedrock_tokens
+        self._health.bedrock_error_rate = (
+            alpha * (bedrock_errors / max(1, items_processed + bedrock_errors))
+            + (1 - alpha) * self._health.bedrock_error_rate
+        )
+        self._health.last_heartbeat = now
+        self._health.status = "healthy" if self._health.error_rate < 0.1 else "degraded"
+
+        # Emit CloudWatch Embedded Metric Format — Lambda runtime converts to metrics
+        import sys, json as _json
+        emf = {
+            "_aws": {
+                "Timestamp": int(now.timestamp() * 1000),
+                "CloudWatchMetrics": [{
+                    "Namespace": "dark-web-fraud",
+                    "Dimensions": [["agent_id"]],
+                    "Metrics": [
+                        {"Name": "ItemsProcessed",       "Unit": "Count"},
+                        {"Name": "Errors",               "Unit": "Count"},
+                        {"Name": "ProcessingThroughput", "Unit": "Count/Second"},
+                        {"Name": "BedrockTokens",        "Unit": "Count"},
+                        {"Name": "ErrorRate",            "Unit": "None"},
+                    ],
+                }],
+            },
+            "agent_id":             self._health.agent_id,
+            "ItemsProcessed":       items_processed,
+            "Errors":               errors,
+            "ProcessingThroughput": throughput,
+            "BedrockTokens":        bedrock_tokens,
+            "ErrorRate":            self._health.error_rate,
+        }
+        print(_json.dumps(emf), file=sys.stdout)
+
     @abstractmethod
     def get_health(self) -> AgentHealth:
         """Return the current health status of the agent.

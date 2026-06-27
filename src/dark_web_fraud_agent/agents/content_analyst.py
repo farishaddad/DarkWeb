@@ -11,6 +11,7 @@ This module implements the ContentAnalyst agent that:
 
 import json
 import logging
+import os
 import re
 from typing import Any, Optional
 
@@ -126,6 +127,38 @@ Otherwise respond ONLY with a JSON object:
   "reasoning": "brief explanation"
 }}"""
 
+# ---------------------------------------------------------------------------
+# COMBINED prompt — single Bedrock call returning all analysis (replaces 3x calls)
+# Use this in production; the individual prompts above are kept for unit tests.
+# ---------------------------------------------------------------------------
+COMBINED_ANALYSIS_PROMPT = """You are a banking fraud intelligence analyst. Analyse the following dark web content and return a single JSON response covering ALL of: fraud relevance, entity extraction, and technique categorisation.
+
+Content:
+<content>
+{text}
+</content>
+
+Respond ONLY with this JSON structure:
+{{
+  "is_fraud_relevant": true or false,
+  "confidence": float 0.0-1.0,
+  "reasoning": "brief explanation",
+  "entities": [
+    {{"entity_type": "bank_name|bin_range|swift_code|btc_wallet|email|url|ip_address",
+      "value": "...", "context": "surrounding 50 chars", "confidence": float}}
+  ],
+  "affected_institutions": ["Bank A", "Bank B"],
+  "estimated_record_count": null,
+  "fraud_category": "mfa_bypass|synthetic_identity|phishing_kit|cnp_fraud|account_takeover|null"
+}}
+
+Fraud relevance criteria: MFA bypass, stolen credentials/Fullz, phishing kits, account takeover,
+synthetic identity, CNP fraud, BIN/SWIFT data, crypto wallets used for fraud proceeds.
+Fraud categories: mfa_bypass, synthetic_identity, phishing_kit, cnp_fraud, account_takeover.
+If content is not fraud-relevant, entities and fraud_category should be empty/null.
+Confidence < 0.7 indicates uncertainty — flag for manual review."""
+
+
 # Regex patterns for fallback entity extraction
 _BIN_PATTERN = re.compile(r'\b([3-6]\d{5})\b')
 _SWIFT_PATTERN = re.compile(r'\b([A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b')
@@ -218,7 +251,9 @@ class ContentAnalyst(AgentBase):
                 contentType="application/json",
                 accept="application/json",
                 guardrailIdentifier=self._analyst_config.guardrail_id,
-                guardrailVersion="DRAFT",
+                # "DRAFT" is only valid during development; production must pin a
+                # published version number. Injected via GUARDRAIL_VERSION env var.
+                guardrailVersion=os.environ.get("GUARDRAIL_VERSION", "1"),
             )
         except Exception as e:
             logger.error(f"Bedrock invocation failed: {e}")
@@ -282,6 +317,78 @@ class ContentAnalyst(AgentBase):
             raise ValueError(
                 f"Failed to parse classification response: {e}"
             ) from e
+
+    def classify_and_extract_combined(self, text: str) -> dict:
+        """Single Bedrock invocation combining classify, extract, and categorise.
+
+        Replaces the 3-call pattern (classify_relevance + extract_entities +
+        categorize_technique) with a single prompt returning all outputs as JSON.
+        Reduces Bedrock cost by ~3x and latency by ~2x.
+
+        Returns a dict with keys: is_fraud_relevant, confidence, entities,
+        fraud_category, affected_institutions, estimated_record_count.
+        On guardrail intervention returns is_fraud_relevant=False, confidence=0.0.
+        """
+        prompt = COMBINED_ANALYSIS_PROMPT.format(text=text)
+        request_body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 2048,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.1,
+        }
+        try:
+            response = self._bedrock_client.invoke_model(
+                modelId=self._analyst_config.bedrock_model_id,
+                body=__import__("json").dumps(request_body),
+                contentType="application/json",
+                accept="application/json",
+                guardrailIdentifier=self._analyst_config.guardrail_id,
+                guardrailVersion=os.environ.get("GUARDRAIL_VERSION", "1"),
+            )
+        except Exception as e:
+            logger.error("Combined Bedrock call failed: %s", e)
+            raise RuntimeError(f"Bedrock invocation failed: {e}") from e
+
+        body = __import__("json").loads(response["body"].read())
+        if body.get("amazon-bedrock-guardrailAction") == "GUARDRAIL_INTERVENED":
+            logger.warning("Guardrails intervened on combined analysis")
+            return {"is_fraud_relevant": False, "confidence": 0.0,
+                    "entities": [], "fraud_category": None,
+                    "affected_institutions": [], "estimated_record_count": None}
+
+        text_out = (body.get("content") or [{}])[0].get("text", "{}")
+        # Strip markdown code fences if Claude wraps in ```json
+        text_out = text_out.strip()
+        if text_out.startswith("```"):
+            text_out = text_out.split("```")[1]
+            if text_out.startswith("json"):
+                text_out = text_out[4:]
+        try:
+            result = __import__("json").loads(text_out)
+        except Exception:
+            logger.warning("Failed to parse combined response, falling back to 3-call path")
+            is_rel, conf = self.classify_relevance(text)
+            ents = self.extract_entities(text) if is_rel else []
+            cat = self.categorize_technique(text) if is_rel else None
+            return {"is_fraud_relevant": is_rel, "confidence": conf,
+                    "entities": ents, "fraud_category": cat,
+                    "affected_institutions": [], "estimated_record_count": None}
+
+        # Hydrate entity dicts into ExtractedEntity objects
+        raw_entities = result.get("entities") or []
+        hydrated = []
+        for e in raw_entities:
+            try:
+                hydrated.append(ExtractedEntity(
+                    entity_type=e.get("entity_type", "url"),
+                    value=e.get("value", ""),
+                    context=e.get("context", ""),
+                    confidence=float(e.get("confidence", 0.8)),
+                ))
+            except (ValueError, KeyError):
+                pass
+        result["entities"] = hydrated
+        return result
 
     def should_require_manual_review(self, confidence: float) -> bool:
         """Determine if content should be flagged for manual review.
@@ -672,3 +779,103 @@ class ContentAnalyst(AgentBase):
 
         # Clamp to [1, 10]
         return max(1, min(10, score))
+
+
+# ---------------------------------------------------------------------------
+# Lambda entry point — invoked by Step Functions LambdaInvoke task state
+# ---------------------------------------------------------------------------
+
+# Module-level boto3 client — reused across warm Lambda invocations (connection pooling)
+_bedrock_client = boto3.client("bedrock-runtime")
+
+
+def handler(event: dict, context) -> dict:
+    """Lambda handler for the Content Analyst pipeline step.
+
+    Receives an event from Step Functions containing an S3 artifact key,
+    runs the full analysis pipeline (classify → extract entities → categorise),
+    and returns structured output for the Data Structurer step.
+
+    Expected input:
+        {
+            "s3_key": "crawl-artifacts/2026/01/15/abc123/xyz.txt",
+            "execution_id": "arn:aws:states:..."
+        }
+
+    Returns a dict consumed as input by the next Step Functions state.
+    """
+    s3_key = event["s3_key"]
+    execution_id = event.get("execution_id", "unknown")
+
+    config = AnalystConfig(
+        bedrock_model_id=os.environ["BEDROCK_MODEL_ID"],
+        guardrail_id=os.environ["GUARDRAIL_ID"],
+        knowledge_base_id=os.environ.get("KNOWLEDGE_BASE_ID", ""),
+        confidence_threshold=float(os.environ.get("CONFIDENCE_THRESHOLD", "0.7")),
+        s3_bucket=os.environ["S3_BUCKET"],
+    )
+    analyst = ContentAnalyst(config, bedrock_client=_bedrock_client)
+
+    # Fetch raw artifact from S3
+    s3 = boto3.client("s3")
+    obj = s3.get_object(Bucket=config.s3_bucket, Key=s3_key)
+    text = obj["Body"].read().decode("utf-8", errors="replace")
+
+    # Single combined Bedrock call (1x instead of 3x) — ~3x cheaper, ~2x faster
+    result = analyst.classify_and_extract_combined(text)
+    is_relevant = result["is_fraud_relevant"]
+    confidence = result["confidence"]
+    requires_review = analyst.should_require_manual_review(confidence)
+    entities = result["entities"]
+    fraud_category = result["fraud_category"]
+
+    # Build ClassifiedContent to compute severity score
+    classification = ClassifiedContent(
+        source_ref=s3_key,
+        is_fraud_relevant=is_relevant,
+        confidence=confidence,
+        requires_manual_review=requires_review,
+        severity_score=1,  # placeholder — overwritten below
+        fraud_category=fraud_category,
+        entities=entities,
+        raw_text_snippet=text[:500],
+    )
+    classification.severity_score = analyst.assign_severity(classification)
+
+    analyst.update_health(
+        items_processed=1 if is_relevant else 0,
+        errors=0,
+        bedrock_tokens=0,  # TODO: extract from Bedrock response metadata
+    )
+    logger.info(
+        "ContentAnalyst",
+        extra={
+            "s3_key": s3_key,
+            "execution_id": execution_id,
+            "is_fraud_relevant": is_relevant,
+            "confidence": confidence,
+            "fraud_category": fraud_category,
+            "severity_score": classification.severity_score,
+            "entity_count": len(entities),
+        },
+    )
+
+    return {
+        "s3_key": s3_key,
+        "execution_id": execution_id,
+        "is_fraud_relevant": is_relevant,
+        "confidence": confidence,
+        "requires_manual_review": requires_review,
+        "fraud_category": fraud_category,
+        "severity_score": classification.severity_score,
+        "entities": [
+            {
+                "entity_type": e.entity_type,
+                "value": e.value,
+                "context": e.context,
+                "confidence": e.confidence,
+            }
+            for e in entities
+        ],
+        "raw_text_snippet": text[:500],
+    }
