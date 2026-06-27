@@ -1,5 +1,5 @@
 {
-  "app": "python app.py",
+  "app": "python3 app.py",
   "watch": {
     "include": ["**"],
     "exclude": ["README.md", "cdk*.json", "requirements*.txt", "**/__pycache__", "tests", ".git", ".venv"]

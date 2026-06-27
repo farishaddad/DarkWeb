@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html><head><style id="qw-theme">:root {
+  --color-bg: #f2f1f4;
+  --color-text: #352f3d;
+  --color-navbar-bg: #eae8ed;
+  --color-bg-chat-view: #fcfcfd;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #eae8ed;
+  --color-bg-hover: #dcdadf;
+  --color-surface: #eae8ed;
+  --color-surface-hover: #dcdadf;
+  --color-surface-active: #c1bec6;
+  --color-border: #c1bec6;
+  --color-border-light: #dcdadf;
+  --color-border-strong: #c1bec6;
+  --color-primary: #4200db;
+  --color-primary-dark: #35009e;
+  --color-primary-light: #8575ff;
+  --color-primary-bg: #e8e6ff;
+  --color-primary-hover-border: #35009e;
+  --color-nav-icon-active: #4200db;
+  --color-nav-hover-border: #4200db;
+  --color-primary-alpha-3: color-mix(in srgb, #4200db 3%, transparent);
+  --color-primary-alpha-5: color-mix(in srgb, #4200db 5%, transparent);
+  --color-primary-alpha-8: color-mix(in srgb, #4200db 8%, transparent);
+  --color-primary-alpha-12: color-mix(in srgb, #4200db 12%, transparent);
+  --color-primary-alpha-15: color-mix(in srgb, #4200db 15%, transparent);
+  --color-primary-alpha-20: color-mix(in srgb, #4200db 20%, transparent);
+  --color-primary-alpha-25: color-mix(in srgb, #4200db 25%, transparent);
+  --color-primary-alpha-30: color-mix(in srgb, #4200db 30%, transparent);
+  --color-primary-alpha-40: color-mix(in srgb, #4200db 40%, transparent);
+  --color-primary-alpha-50: color-mix(in srgb, #4200db 50%, transparent);
+  --color-primary-alpha-60: color-mix(in srgb, #4200db 60%, transparent);
+  --color-primary-subtle: color-mix(in srgb, #4200db 18%, transparent);
+  --color-primary-border: #8575ff;
+  --color-focus-ring: color-mix(in srgb, #4200db 50%, transparent);
+  --color-sidebar-hover: color-mix(in srgb, #4200db 12%, transparent);
+  --color-accent: #4200db;
+  --color-accent-foreground: #4200db;
+  --color-accent-dark: #35009e;
+  --color-accent-light: #e8e6ff;
+  --color-accent-inverse: #ffffff;
+  --color-link: #4200db;
+  --color-primary-gradient-end: #e8e6ff;
+  --color-primary-bg-solid: #eae8ed;
+  --color-user-bubble: #F3F3F7;
+  --color-user-bubble-text: #352f3d;
+  --color-text-secondary: #5e5966;
+  --color-text-tertiary: #7a7582;
+  --color-text-muted: #938f9b;
+  --color-text-on-primary: #f2f1f4;
+  --color-success: #00802f;
+  --color-success-dark: #00471e;
+  --color-success-light: #d9ffd6;
+  --color-success-hover: #005c26;
+  --color-success-bg: #e6f4eb;
+  --color-success-border: #c4dccb;
+  --color-success-foreground: #00802f;
+  --color-success-dark-foreground: #00471e;
+  --color-success-text: #00471e;
+  --color-error: #db0000;
+  --color-error-dark: #700000;
+  --color-error-light: #ffe0e0;
+  --color-error-hover: #ffe0e0;
+  --color-error-bg: #fbe9ea;
+  --color-error-border: #eecbcd;
+  --color-error-active-border: #db0000;
+  --color-error-foreground: #db0000;
+  --color-error-dark-foreground: #700000;
+  --color-error-inverse: #ffffff;
+  --color-error-text: #700000;
+  --color-warning: #f2b100;
+  --color-warning-dark: #573a00;
+  --color-warning-light: #fffbbd;
+  --color-warning-hover: #db9200;
+  --color-warning-bg: #fdf6e4;
+  --color-warning-border: #f5dda6;
+  --color-warning-foreground: #f2b100;
+  --color-warning-dark-foreground: #573a00;
+  --color-warning-inverse: #573a00;
+  --color-surface-warning: #fffbbd;
+  --color-text-warning: #573a00;
+  --color-info: #006ce0;
+  --color-info-dark: #002a66;
+  --color-info-light: #d1f1ff;
+  --color-info-hover: #003b8f;
+  --color-info-bg: #e6f0fb;
+  --color-info-border: #c0d5ec;
+  --color-info-foreground: #006ce0;
+  --color-info-dark-foreground: #002a66;
+  --color-info-inverse: #ffffff;
+  --color-overlay: #dcdadf80;
+  --color-shadow: #352f3d40;
+  --color-hover: #352f3d0d;
+  --color-tooltip-bg: #eae8ed;
+  --color-tooltip-text: #352f3d;
+  --color-voice-purple: #8575ff;
+  --color-voice-purple-dark: #4200db;
+  --color-voice-purple-light: #8575ff;
+  --color-voice-red: #db0000;
+  --color-voice-red-dark: #700000;
+  --color-voice-amber: #f2b100;
+  --color-voice-purple-glow: rgba(66, 0, 219, .4);
+  --color-voice-red-glow: rgba(219, 0, 0, .4);
+  --font-sans: "Amazon Ember", "Helvetica Neue", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "SF Mono", "Monaco", "Menlo", "Consolas", monospace;
+  --text-2xs: .5625rem;
+  --text-xs: .625rem;
+  --text-sm: .6875rem;
+  --text-base: .75rem;
+  --text-md: .8125rem;
+  --text-lg: .875rem;
+  --text-xl: 1rem;
+  --text-2xl: 1.125rem;
+  --text-3xl: 1.25rem;
+  --text-4xl: 1.5rem;
+  --text-5xl: 2rem;
+  --spacing-1: calc(.25rem * 1);
+  --spacing-1-5: calc(.25rem * 1.5);
+  --spacing-2: calc(.25rem * 2);
+  --spacing-3: calc(.25rem * 3);
+  --spacing-4: calc(.25rem * 4);
+  --spacing-5: calc(.25rem * 5);
+  --spacing-6: calc(.25rem * 6);
+  --spacing-7: calc(.25rem * 7);
+  --spacing-8: calc(.25rem * 8);
+  --spacing-9: calc(.25rem * 9);
+  --spacing-10: calc(.25rem * 10);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-card: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 8px;
+  --shadow-sm: 0 1px 2px rgba(53, 47, 61, .06);
+  --shadow-md: 0 4px 12px rgba(53, 47, 61, .1);
+  --color-success-bg-solid: #d9ffd6;
+  --color-error-bg-solid: #ffe0e0;
+  --color-error-border-solid: #ffe0e0;
+  --color-warning-bg-solid: #fffbbd;
+  --color-warning-text: #573a00;
+  --color-info-bg-solid: #d1f1ff;
+  --color-info-bg-solid-alt: #d1f1ff;
+  --color-info-text: #002a66;
+  --color-info-text-alt: #002a66;
+  --color-emerald: #367c53;
+  --color-teal: #0c9aa7;
+  --color-code-bg: #eae8ed;
+  --color-code-header-bg: #dcdadf;
+  --color-code-text: #352f3d;
+  --color-code-border: #c1bec6;
+  --color-code-muted: #5e5966;
+  --color-inline-code-bg: #eae8ed;
+  --color-inline-code-text: #352f3d;
+  --color-inline-code-border: #c1bec6;
+  --color-scrollbar-thumb: #c1bec6;
+  --color-scrollbar-track: transparent;
+  --color-graph-node-text: #352f3d;
+  --color-graph-node-text-dim: #938f9b;
+  --color-graph-edge-default: #938f9b;
+  --color-graph-edge-cross: #d08025;
+  --color-graph-edge-text: #5e5966;
+  --color-graph-edge-stroke: #f2f1f4;
+  --color-graph-highlight-bg: #FF6B6B;
+  --color-graph-highlight-border: #E74C3C;
+  --color-graph-search-bg: #FFD700;
+  --color-graph-search-border: #FFA500;
+  --color-graph-focus-border: #C0392B;
+  --color-graph-external-border: #938f9b;
+  --color-graph-cat-file: #3878b0;
+  --color-graph-cat-folder: #5e5966;
+  --color-graph-cat-file-aggregate: #2d6a9f;
+  --color-graph-cat-class: #7138cc;
+  --color-graph-cat-function: #367c53;
+  --color-graph-cat-method: #0c9aa7;
+  --color-graph-cat-variable: #d08025;
+  --color-graph-cat-import: #b06a1a;
+  --color-graph-cat-module: #5e35a8;
+  --color-graph-cat-concept: #993333;
+  --color-graph-cat-person: #c44d4d;
+  --color-graph-cat-org: #0c9aa7;
+  --color-graph-cat-organization: #0c9aa7;
+  --color-graph-cat-product: #8e47ff;
+  --color-graph-cat-metric: #c44d78;
+  --color-graph-cat-location: #34495E;
+  --color-graph-cat-date: #b34d8a;
+  --color-graph-cat-code: #3878b0;
+  --color-graph-cat-doc: #5e5966;
+  --color-graph-cat-url: #367c53;
+  --color-graph-cat-email: #5e35a8;
+  --color-graph-cat-unknown: #938f9b;
+  --color-graph-rel-contains: #938f9b;
+  --color-graph-rel-extends: #7138cc;
+  --color-graph-rel-implements: #3878b0;
+  --color-graph-rel-imports: #d08025;
+  --color-graph-rel-uses: #367c53;
+  --color-graph-rel-calls: #367c53;
+  --color-graph-rel-references: #d08025;
+  --color-graph-rel-related-to: #938f9b;
+  --color-graph-rel-works-on: #993333;
+  --color-graph-rel-owns: #0c9aa7;
+  --color-graph-rel-depends-on: #b06a1a;
+  --color-graph-rel-parent-of: #938f9b;
+  --qs-content: #fff;
+  --qs-main: #fff;
+  --qs-primary-foreground: #131920;
+  --qs-secondary-foreground: #656871;
+  --qs-tertiary-foreground: #938f9b;
+  --qs-placeholder-foreground: #8c8c94;
+  --qs-divider: #dedee3;
+  --qs-default-border: #8c8c94;
+  --qs-neutral-soft: #b4b4bb;
+  --qs-neutral-gray-50: #eae8ed;
+  --qs-tertiary-background: #eae8ed;
+  --qs-action-hover: #f3f3f7;
+  --qs-primary-default: #4200db;
+  --qs-primary-dark: #35009e;
+  --qs-primary-light: #e8e6ff;
+  --qs-success-default: #00802f;
+  --qs-error-default: #db0000;
+  --qs-font-sans: "Amazon Ember", "Helvetica Neue", "Segoe UI", Helvetica, Arial, sans-serif;
+  --qs-font-family: "Amazon Ember", "Helvetica Neue", "Segoe UI", Helvetica, Arial, sans-serif;
+  --qs-font-base-letter-spacing: .15px;
+  --qs-shadow-sm: 0 0 2px 0 #00000029, 0 0 4px 0 #00000029;
+  --qs-shadow-md: 0 0 2px 0 #00000029, 0 2px 8px 1px #00000029;
+  --qs-shadow-lg: 0 4px 16px 4px #00000029, 0 2px 6px 1px #00000029;
+  --qs-shadow-xl: 0 4px 8px 2px #00000029, 0 6px 20px 4px #00000029;
+  --qs-width-modal-sm: 384px;
+  --qs-width-modal-md: 600px;
+  --qs-width-modal-lg: 1136px;
+  --qs-grid-gap: 16px;
+  --qs-grid-gap-xl: 24px;
+  --qs-primary-medium: #8575ff;
+  --qs-primary-inverse: #fff;
+  --qs-neutral-lightest: #f9f9fb;
+  --qs-neutral-light: #f3f3f7;
+  --qs-neutral-default: #dedee3;
+  --qs-neutral-medium: #8c8c94;
+  --qs-neutral-deep: #656871;
+  --qs-neutral-dark: #333843;
+  --qs-neutral-strong: #131920;
+  --qs-neutral-white: #fff;
+  --qs-neutral-black: #000;
+  --qs-success-medium: #005c26;
+  --qs-success-dark: #00471e;
+  --qs-success-light: #d9ffd6;
+  --qs-success-inverse: #fff;
+  --qs-info-default: #006ce0;
+  --qs-info-medium: #003b8f;
+  --qs-info-dark: #002a66;
+  --qs-info-light: #d1f1ff;
+  --qs-info-inverse: #fff;
+  --qs-warning-default: #f2b100;
+  --qs-warning-medium: #db9200;
+  --qs-warning-dark: #573a00;
+  --qs-warning-light: #fffbbd;
+  --qs-warning-inverse: #573a00;
+  --qs-warning-experimental: #f2b100;
+  --qs-warning-experimental-light: #fffbbd;
+  --qs-warning-experimental-light-foreground: #fffbbd;
+  --qs-error-medium: #900;
+  --qs-error-dark: #700000;
+  --qs-error-light: #ffe0e0;
+  --qs-error-inverse: #fff;
+  --qs-connection-default: #db3300;
+  --qs-connection-soft: #ff997a;
+  --qs-connection-light: #ffe0d6;
+  --qs-connection-dark: #661800;
+  --qs-automation-default: #b3008f;
+  --qs-automation-medium: #d600ba;
+  --qs-automation-soft: #ff94f1;
+  --qs-automation-light: #ffe0fb;
+  --qs-automation-dark: #660052;
+  --qs-insight-default: #a000b8;
+  --qs-insight-soft: #f299ff;
+  --qs-insight-light: #fce6ff;
+  --qs-insight-dark: #590066;
+  --qs-visualization-default: #7300e5;
+  --qs-visualization-soft: #d4a8ff;
+  --qs-visualization-light: #f2e5ff;
+  --qs-visualization-dark: #45008a;
+  --qs-spice: #ff9800;
+  --qs-coachmark: #006ce0;
+  --qs-brand: #fff;
+  --qs-brand-foreground: #131920;
+  --qs-brand-navbar: #131920;
+  --qs-brand-navbar-foreground: #fff;
+  --qs-brand-navbar-light: #dedee3;
+  --qs-brand-navbar-dark: #000;
+  --qs-application-navbar: #4200db;
+  --qs-application-navbar-foreground: #fff;
+  --qs-application-navbar-light: #e8e6ff;
+  --qs-application-navbar-dark: #35009e;
+  --qs-dimension: #4200db;
+  --qs-dimension-foreground: #fff;
+  --qs-dimension-experimental: #4200db;
+  --qs-dimension-experimental-foreground: #4200db;
+  --qs-measure: #00802f;
+  --qs-measure-foreground: #fff;
+  --qs-measure-experimental: #f2b100;
+  --qs-measure-experimental-foreground: #f2b100;
+  --qs-content-inverse: #333843;
+  --qs-content-inverse-active: #131920;
+  --qs-secondary: #dedee3;
+  --qs-disabled: #8c8c94;
+  --qs-divider-light: #f3f3f7;
+  --qs-hover-border: #333843;
+  --qs-active-border: #4200db;
+  --qs-disabled-border: #dedee3;
+  --qs-error-border: #ffe0e0;
+  --qs-error-active-border: #db0000;
+  --qs-disabled-foreground: #b4b4bb;
+  --qs-primary-inverse-foreground: #fff;
+  --qs-error-foreground: #db0000;
+  --qs-contrast-foreground: #131920;
+  --qs-main-foreground: #131920;
+  --qs-main-secondary-foreground: #656871;
+  --qs-action-disabled: #f3f3f7;
+  --qs-action-active: #e8e6ff;
+  --qs-default-badge: #dedee3;
+  --qs-tag-default: #dedee3;
+  --qs-tag-soft-border: #b4b4bb;
+  --qs-focus-offset: 1px;
+  --qs-toggle-tile-sm: calc(.25rem * 8);
+  --qs-toggle-tile-md: calc(.25rem * 12);
+  --qs-toggle-tile-lg: calc(.25rem * 15);
+  --qs-shadow-pin-right: inset 4px 0 4px -4px #00000029;
+  --qs-shadow-pin-left: inset -4px 0 4px -4px #00000029;
+  --react-pdf-text-layer: 1;
+  --highlight-bg-color: rgba(180, 0, 170, 1);
+  --highlight-selected-bg-color: rgba(0, 100, 0, 1);
+  --react-pdf-annotation-layer: 1;
+  --annotation-unfocused-field-background: url("data:image/svg+xml;charset=UTF-8,<svg width='1px' height='1px' xmlns='http://www.w3.org/2000/svg'><rect width='100%' height='100%' style='fill:rgba(0, 54, 255, 0.13);'/></svg>");
+  --input-focus-border-color: Highlight;
+  --input-focus-outline: 1px solid Canvas;
+  --input-unfocused-border-color: transparent;
+  --input-disabled-border-color: transparent;
+  --input-hover-border-color: black;
+  --link-outline: none;
+  color-scheme: light;
+}
+body { background: var(--color-bg); color: var(--color-text); }
+a { color: var(--color-link, var(--color-primary)); }</style>
+<meta charset="UTF-8">
+<title>Production AWS Architecture — Dark Web Fraud Intelligence Agent</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+  body {
+    background: var(--color-bg);
+    font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+    color: var(--color-text, #1a1a2e);
+    margin: 0;
+    padding: 20px 24px 40px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  h1 { font-size: 20px; font-weight: 700; margin: 0 0 4px; color: var(--color-text, #1a1a2e); }
+  .subtitle { color: var(--color-text-secondary, #5c6778); font-size: 13px; margin-bottom: 24px; }
+
+  /* ---- Pipeline Flow ---- */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: var(--color-bg-secondary, #f4f5f7);
+    border: 1px solid var(--color-border-light, #e0e3e8);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 28px;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+  .pipe-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    min-width: 100px;
+    flex-shrink: 0;
+  }
+  .pipe-icon {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+  .pipe-label { font-size: 11px; font-weight: 600; color: var(--color-text, #1a1a2e); }
+  .pipe-sub { font-size: 10px; color: var(--color-text-muted, #888); margin-top: 2px; }
+  .pipe-arrow {
+    flex-shrink: 0;
+    color: var(--color-text-muted, #aaa);
+    font-size: 18px;
+    margin: 0 6px;
+    margin-bottom: 20px;
+  }
+  .c1 { background: #e8f0fe; color: #1a56db; }
+  .c2 { background: #fce8f3; color: #9c1c64; }
+  .c3 { background: #e8fef0; color: #0a7c3e; }
+  .c4 { background: #fff8e1; color: #b45309; }
+  .c5 { background: #f3e8ff; color: #6d28d9; }
+  .c6 { background: #fee8e8; color: #b91c1c; }
+
+  /* ---- Section headers ---- */
+  .section-header {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--color-text-secondary, #5c6778);
+    margin: 28px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--color-border, #d0d4db);
+  }
+  .section-header i { font-size: 14px; }
+
+  /* ---- Service cards grid ---- */
+  .services-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    gap: 14px;
+  }
+  .service-card {
+    background: var(--color-bg-secondary, #f8f9fb);
+    border: 1px solid var(--color-border-light, #e4e7ec);
+    border-radius: 10px;
+    padding: 14px 16px;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    cursor: default;
+    position: relative;
+  }
+  .service-card:hover {
+    border-color: var(--color-primary, #0052cc);
+    box-shadow: 0 2px 8px rgba(0,82,204,0.10);
+  }
+  .svc-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .svc-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .svc-name { font-size: 13px; font-weight: 700; color: var(--color-text, #1a1a2e); }
+  .svc-tier { font-size: 10px; font-weight: 600; color: var(--color-text-muted, #888); text-transform: uppercase; letter-spacing: 0.05em; }
+  .svc-why {
+    font-size: 12px;
+    color: var(--color-text-secondary, #5c6778);
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+  .svc-why strong { color: var(--color-text, #1a1a2e); }
+  .agents-used {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .agent-tag {
+    display: inline-flex; align-items: center;
+    padding: 2px 7px;
+    border-radius: 100px;
+    font-size: 10px; font-weight: 600;
+    border: 1px solid;
+  }
+  .ag-crawl  { background: #e8f0fe; color: #1a56db; border-color: #c3d8fd; }
+  .ag-analyst{ background: #fce8f3; color: #9c1c64; border-color: #f5c6e2; }
+  .ag-struct { background: #e8fef0; color: #0a7c3e; border-color: #b3f0cc; }
+  .ag-tag    { background: #fff8e1; color: #b45309; border-color: #fde68a; }
+  .ag-alert  { background: #f3e8ff; color: #6d28d9; border-color: #ddd6fe; }
+  .ag-infra  { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+  .ag-misp   { background: #fee8e8; color: #b91c1c; border-color: #fecaca; }
+
+  /* ---- Gap table ---- */
+  .gap-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
+  .gap-table th {
+    text-align: left;
+    color: var(--color-text-muted, #888);
+    font-weight: 600;
+    padding: 6px 10px;
+    border-bottom: 2px solid var(--color-border, #d0d4db);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .gap-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--color-border-light, #e4e7ec);
+    color: var(--color-text, #1a1a2e);
+    vertical-align: top;
+  }
+  .gap-table tr:last-child td { border-bottom: none; }
+  .gap-table tr:hover td { background: var(--color-surface-hover, rgba(0,82,204,0.04)); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 100px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  .badge-critical { background: #fee2e2; color: #b91c1c; }
+  .badge-high     { background: #fef3c7; color: #92400e; }
+  .badge-medium   { background: #e0f2fe; color: #0369a1; }
+
+  /* ---- Data flow section ---- */
+  .flow-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .flow-box {
+    background: var(--color-bg-secondary, #f8f9fb);
+    border: 1px solid var(--color-border-light, #e4e7ec);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .flow-box h4 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-secondary, #5c6778);
+  }
+  .flow-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 7px;
+    font-size: 12px;
+    color: var(--color-text-secondary, #5c6778);
+  }
+  .flow-item i { color: var(--color-primary, #0052cc); margin-top: 1px; font-size: 11px; }
+  .flow-item strong { color: var(--color-text, #1a1a2e); }
+
+  @media (max-width: 640px) {
+    .flow-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Dark Web Fraud Intelligence Agent</h1>
+<p class="subtitle">Production-Grade AWS Architecture — based on codebase analysis</p>
+
+<!-- Pipeline flow -->
+<div class="pipeline">
+  <div class="pipe-step">
+    <div class="pipe-icon c1"><i class="fa-solid fa-spider"></i></div>
+    <div class="pipe-label">Crawling Engine</div>
+    <div class="pipe-sub">Tor/I2P → S3</div>
+  </div>
+  <div class="pipe-arrow"><i class="fa-solid fa-chevron-right"></i></div>
+  <div class="pipe-step">
+    <div class="pipe-icon c2"><i class="fa-solid fa-brain"></i></div>
+    <div class="pipe-label">Content Analyst</div>
+    <div class="pipe-sub">Claude → NER</div>
+  </div>
+  <div class="pipe-arrow"><i class="fa-solid fa-chevron-right"></i></div>
+  <div class="pipe-step">
+    <div class="pipe-icon c3"><i class="fa-solid fa-diagram-project"></i></div>
+    <div class="pipe-label">Data Structurer</div>
+    <div class="pipe-sub">STIX 2.1 → OpenSearch</div>
+  </div>
+  <div class="pipe-arrow"><i class="fa-solid fa-chevron-right"></i></div>
+  <div class="pipe-step">
+    <div class="pipe-icon c4"><i class="fa-solid fa-tags"></i></div>
+    <div class="pipe-label">Tagging Engine</div>
+    <div class="pipe-sub">ATT&amp;CK → MISP</div>
+  </div>
+  <div class="pipe-arrow"><i class="fa-solid fa-chevron-right"></i></div>
+  <div class="pipe-step">
+    <div class="pipe-icon c5"><i class="fa-solid fa-bell"></i></div>
+    <div class="pipe-label">Alert Generator</div>
+    <div class="pipe-sub">Convergence → SNS</div>
+  </div>
+  <div class="pipe-arrow"><i class="fa-solid fa-chevron-right"></i></div>
+  <div class="pipe-step">
+    <div class="pipe-icon c6"><i class="fa-solid fa-shield-halved"></i></div>
+    <div class="pipe-label">Downstream</div>
+    <div class="pipe-sub">SIEM / SOAR / API</div>
+  </div>
+</div>
+
+<!-- ===================== COMPUTE LAYER ===================== -->
+<div class="section-header"><i class="fa-solid fa-microchip"></i> Compute Layer</div>
+<div class="services-grid">
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#e8f0fe; color:#1a56db;"><i class="fa-solid fa-layer-group"></i></div>
+      <div>
+        <div class="svc-name">AWS Fargate (ECS)</div>
+        <div class="svc-tier">Crawling Engine runtime</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> The Crawling Engine requires a <em>persistent, long-running process</em> — it holds a live Tor controller connection via <code>stem</code>, maintains SOCKS5 sockets, and rotates circuits. Lambda's 15-min limit and stateless cold-start model are incompatible with this. Fargate runs the crawling container with a <strong>Tor sidecar</strong> (separate container in the same task) exposed on <code>127.0.0.1:9050</code> / <code>9051</code>, matching how <code>CrawlingEngine.get_proxy_url()</code> is wired. It scales the crawl fleet horizontally with ECS service autoscaling.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-crawl">Crawling Engine</span>
+    </div>
+  </div>
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#e8fef0; color:#0a7c3e;"><i class="fa-solid fa-bolt"></i></div>
+      <div>
+        <div class="svc-name">AWS Lambda</div>
+        <div class="svc-tier">Short-lived agent steps</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> The Content Analyst, Data Structurer, Tagging Engine, and Alert Generator are <em>stateless, invocation-scoped</em> — they receive S3 payloads, process them via Bedrock/OpenSearch, and return structured outputs. Lambda is ideal: pay-per-invocation, scales to zero, and integrates natively as Step Functions task states (replacing the current <code>Pass</code> placeholders in <code>cdk_pipeline_stack.py</code>). Each agent = one Lambda function with its own IAM execution role (already scaffolded in <code>CrawlingEngineRole</code>).
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-analyst">Content Analyst</span>
+      <span class="agent-tag ag-struct">Data Structurer</span>
+      <span class="agent-tag ag-tag">Tagging Engine</span>
+      <span class="agent-tag ag-alert">Alert Generator</span>
+    </div>
+  </div>
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#f3e8ff; color:#6d28d9;"><i class="fa-solid fa-robot"></i></div>
+      <div>
+        <div class="svc-name">Amazon Bedrock AgentCore</div>
+        <div class="svc-tier">Agent runtime + managed KB</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> AgentCore provides the declarative agent harness — memory, tool use, and reasoning loops — wrapping each agent class. The <strong>Managed Knowledge Base</strong> (with Agentic Retriever + Smart Parsing) powers RAG over historical threat intel stored in OpenSearch. The <code>AgentBase</code> class in <code>models/shared.py</code> is designed to be backed by this. AgentCore Optimization gives you A/B testing and failure trajectory analysis in production.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-analyst">Content Analyst</span>
+      <span class="agent-tag ag-struct">Data Structurer</span>
+      <span class="agent-tag ag-alert">Alert Generator</span>
+    </div>
+  </div>
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#fce8f3; color:#9c1c64;"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+      <div>
+        <div class="svc-name">Amazon Bedrock — Claude Opus 4</div>
+        <div class="svc-tier">LLM backbone</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> Every intelligence extraction call in <code>content_analyst.py</code> invokes Claude via Bedrock for fraud type classification, severity scoring (1–10), and entity extraction (BINs, SWIFT, BTC wallets, IPs). In production, add <strong>Provisioned Throughput</strong> to guarantee tokens/sec SLA for the 5-minute pipeline cycle. Enable <strong>cross-region inference</strong> for resilience. Pair with <strong>Bedrock Guardrails</strong> (already referenced in README) to screen dark web content for prompt injection.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-analyst">Content Analyst</span>
+      <span class="agent-tag ag-struct">Data Structurer</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================== ORCHESTRATION ===================== -->
+<div class="section-header"><i class="fa-solid fa-diagram-project"></i> Orchestration &amp; Scheduling</div>
+<div class="services-grid">
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#fff8e1; color:#b45309;"><i class="fa-solid fa-sitemap"></i></div>
+      <div>
+        <div class="svc-name">AWS Step Functions (Express)</div>
+        <div class="svc-tier">Pipeline orchestrator</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> Already in <code>cdk_pipeline_stack.py</code> but using <code>Pass</code> placeholder states. In production, upgrade to <strong>Express Workflows</strong> (high-throughput, per-execution pricing) and replace Pass states with <code>Task</code> states invoking Lambda + ECS. Express handles the 5-minute cadence (&gt;1M executions/month) without Standard Workflow costs. The state machine passes the S3 artifact key as input through each agent step, maintaining the pipeline's data contract.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-infra">All agents</span>
+    </div>
+  </div>
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#e8fef0; color:#0a7c3e;"><i class="fa-solid fa-calendar-check"></i></div>
+      <div>
+        <div class="svc-name">Amazon EventBridge Scheduler</div>
+        <div class="svc-tier">Crawl trigger (every 5 min)</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> The existing <code>events.Rule</code> in CDK fires the Step Functions state machine every 5 minutes. In production, switch to <strong>EventBridge Scheduler</strong> (not just Rules) for timezone-aware scheduling, flexible invocation windows, and dead-letter queue support for missed invocations. Also use custom event buses to decouple crawl triggers from downstream processing triggers.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-crawl">Crawling Engine</span>
+      <span class="agent-tag ag-infra">Step Functions</span>
+    </div>
+  </div>
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#f3e8ff; color:#6d28d9;"><i class="fa-solid fa-arrows-split-up-and-left"></i></div>
+      <div>
+        <div class="svc-name">Amazon SQS (FIFO + DLQ)</div>
+        <div class="svc-tier">Alert delivery + backpressure</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> Already in CDK (<code>AlertQueue</code> with <code>DLQ</code>). In production, use <strong>FIFO queues</strong> for ordered alert delivery to downstream SIEM systems — critical when campaign convergence generates multiple alerts for the same TTP. The DLQ (14-day retention) catches failed deliveries. <code>alert_generator.py</code> publishes to SNS → SQS fan-out, so multiple consumers (SIEM, SOAR, email) can subscribe independently.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-alert">Alert Generator</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================== STORAGE ===================== -->
+<div class="section-header"><i class="fa-solid fa-database"></i> Storage Layer</div>
+<div class="services-grid">
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#e8f0fe; color:#1a56db;"><i class="fa-solid fa-bucket"></i></div>
+      <div>
+        <div class="svc-name">Amazon S3 + S3 Annotations</div>
+        <div class="svc-tier">Raw artifact store</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> <code>store_artifact()</code> in <code>crawling_engine.py</code> uploads raw crawl content and a sidecar <code>.annotation.json</code> with queryable metadata. In production: add <strong>S3 Intelligent-Tiering</strong> (auto-archive cold artifacts), <strong>Object Lock</strong> (WORM for forensic integrity), <strong>Replication</strong> to a second region for DR, and <strong>S3 Event Notifications</strong> → SQS to trigger the Content Analyst on new artifact arrival (event-driven alternative to polling).
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-crawl">Crawling Engine</span>
+      <span class="agent-tag ag-struct">Data Structurer</span>
+      <span class="agent-tag ag-infra">Bedrock KB</span>
+    </div>
+  </div>
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#e8fef0; color:#0a7c3e;"><i class="fa-solid fa-table-cells"></i></div>
+      <div>
+        <div class="svc-name">Amazon DynamoDB</div>
+        <div class="svc-tier">Agent state + convergence tracking</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> Two tables already in CDK: <code>AgentStateTable</code> (tracks crawl circuit breaker state — <code>CircuitBreakerState.source_url_hash</code> is the PK) and <code>ConvergenceTable</code> (tracks TTPs for campaign convergence with TTL auto-expiry). In production: enable <strong>DynamoDB Streams</strong> on ConvergenceTable to trigger Alert Generator Lambda when convergence threshold is crossed — more reactive than polling. Add <strong>Global Tables</strong> for multi-region HA.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-crawl">Crawling Engine</span>
+      <span class="agent-tag ag-alert">Alert Generator</span>
+    </div>
+  </div>
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#fee8e8; color:#b91c1c;"><i class="fa-solid fa-magnifying-glass-chart"></i></div>
+      <div>
+        <div class="svc-name">Amazon OpenSearch Serverless</div>
+        <div class="svc-tier">Vector + full-text threat intel index</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> <code>data_structurer.py</code> generates Bedrock Titan embeddings for every STIX object and indexes into OpenSearch VECTORSEARCH collection. This enables semantic similarity search — e.g., "find all indicators similar to this BTC wallet pattern." In production: configure <strong>separate collections</strong> for vector search vs. full-text (cost separation), set <strong>data access policies</strong> per agent IAM role, and expose via a <strong>VPC endpoint</strong> — the current CDK intelligence stack doesn't restrict network access.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-struct">Data Structurer</span>
+      <span class="agent-tag ag-infra">Bedrock KB</span>
+    </div>
+  </div>
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#f3e8ff; color:#6d28d9;"><i class="fa-solid fa-lock"></i></div>
+      <div>
+        <div class="svc-name">AWS Secrets Manager</div>
+        <div class="svc-tier">Tor + MISP credentials</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> Already in CDK: <code>TorCredentials</code> (Tor control port password used in <code>CrawlingEngine.start()</code>) and <code>MispApiKey</code> (used in <code>misp_integration.py</code>). In production: enable <strong>automatic rotation</strong> for MISP API keys (Lambda rotation function), add <strong>resource-based policies</strong> to allow only the relevant agent IAM roles, and use <strong>parameter store</strong> for non-sensitive config (e.g., tor ports, convergence thresholds) to reduce cost.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-crawl">Crawling Engine</span>
+      <span class="agent-tag ag-misp">MISP Integration</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================== NETWORKING & SECURITY ===================== -->
+<div class="section-header"><i class="fa-solid fa-shield-halved"></i> Networking &amp; Security</div>
+<div class="services-grid">
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#e8f0fe; color:#1a56db;"><i class="fa-solid fa-network-wired"></i></div>
+      <div>
+        <div class="svc-name">Amazon VPC (Multi-AZ)</div>
+        <div class="svc-tier">Tor proxy isolation</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> Already in CDK with Public/Private/Isolated subnets. The Fargate crawling tasks run in <strong>Private subnets</strong> and reach .onion addresses through a <strong>NAT Gateway</strong> (Tor traffic exits to the internet via the NAT's EIP). Lambda agents in Isolated subnets reach AWS services via <strong>VPC Interface Endpoints</strong> (S3, DynamoDB, Bedrock, Secrets Manager, OpenSearch) — never traversing the internet. This is the security boundary that prevents dark web traffic from contaminating the analysis layer.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-crawl">Crawling Engine</span>
+      <span class="agent-tag ag-infra">All agents</span>
+    </div>
+  </div>
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#fff8e1; color:#b45309;"><i class="fa-solid fa-user-lock"></i></div>
+      <div>
+        <div class="svc-name">AWS IAM (per-agent roles)</div>
+        <div class="svc-tier">Least-privilege execution</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> CDK already creates <code>CrawlingEngineRole</code> with only S3 read/write + DynamoDB + Secrets access. Production should extend this pattern — one IAM role per agent with only the permissions that agent's code actually calls. E.g., the Content Analyst role only needs <code>bedrock:InvokeModel</code> and <code>s3:GetObject</code>. Use <strong>IAM Conditions</strong> to scope S3 access to the specific bucket prefix (<code>crawl-artifacts/*</code>) rather than the whole bucket.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-infra">All agents</span>
+    </div>
+  </div>
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#e8fef0; color:#0a7c3e;"><i class="fa-solid fa-key"></i></div>
+      <div>
+        <div class="svc-name">AWS KMS (CMK)</div>
+        <div class="svc-tier">Encryption at rest</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> Dark web intelligence data is sensitive — stolen credential data, BIN ranges, SWIFT codes. The current CDK S3 bucket uses <code>S3_MANAGED</code> encryption. For a banking fraud use case, upgrade to <strong>Customer Managed Keys (CMK)</strong> — one CMK per data classification tier (raw artifacts, STIX objects, alerts). This gives audit trail via CloudTrail of every decryption event, and per-agent key policies prevent cross-contamination.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-infra">S3 · DynamoDB · OpenSearch</span>
+    </div>
+  </div>
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#fee8e8; color:#b91c1c;"><i class="fa-solid fa-eye"></i></div>
+      <div>
+        <div class="svc-name">Amazon GuardDuty + Security Hub</div>
+        <div class="svc-tier">Threat detection on the system itself</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> A system that processes dark web content is itself a high-value attack target. GuardDuty monitors for anomalous API calls (e.g., unexpected Bedrock invocations, S3 exfiltration patterns), while Security Hub aggregates findings from GuardDuty, Inspector (container vulnerability scanning for the Fargate Tor image), and IAM Access Analyzer. This is the "security of the security system" layer — missing from the current CDK.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-infra">System-wide</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================== OBSERVABILITY ===================== -->
+<div class="section-header"><i class="fa-solid fa-chart-line"></i> Observability</div>
+<div class="services-grid">
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#e8f0fe; color:#1a56db;"><i class="fa-solid fa-chart-bar"></i></div>
+      <div>
+        <div class="svc-name">Amazon CloudWatch (Logs + Metrics + Dashboards)</div>
+        <div class="svc-tier">Pipeline health + agent telemetry</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> CDK already defines two alarms: pipeline failures &gt; 3 and DLQ depth &gt; 10. Extend with: <strong>Custom Metrics</strong> for each agent (crawl success rate, entities extracted per run, convergence events per hour), <strong>Metric Math</strong> to compute false-positive rate, <strong>CloudWatch Dashboards</strong> for SOC visibility, and <strong>Embedded Metric Format (EMF)</strong> in Lambda handlers for zero-overhead structured logging that becomes queryable metrics automatically.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-infra">All agents</span>
+    </div>
+  </div>
+
+  <div class="service-card">
+    <div class="svc-header">
+      <div class="svc-icon" style="background:#fce8f3; color:#9c1c64;"><i class="fa-solid fa-binoculars"></i></div>
+      <div>
+        <div class="svc-name">AWS X-Ray</div>
+        <div class="svc-tier">Distributed tracing across pipeline steps</div>
+      </div>
+    </div>
+    <div class="svc-why">
+      <strong>Why needed:</strong> The pipeline chains 5 agents across Lambda + ECS + Bedrock + OpenSearch. X-Ray traces the full execution path of a single crawl artifact through the pipeline — critical for diagnosing latency spikes (e.g., "Bedrock took 8s on this run") and identifying which agent failed in the Step Functions trace. Enable <strong>Active Tracing</strong> on Lambda functions and the Step Functions state machine; instrument Bedrock calls with the X-Ray SDK.
+    </div>
+    <div class="agents-used">
+      <span class="agent-tag ag-infra">All agents</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================== PRODUCTION GAPS ===================== -->
+<div class="section-header"><i class="fa-solid fa-triangle-exclamation"></i> Production Gaps in Current Codebase</div>
+
+<table class="gap-table">
+  <thead>
+    <tr>
+      <th>Gap</th>
+      <th>Current State</th>
+      <th>Production Fix</th>
+      <th>Priority</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Step Functions placeholder states</strong></td>
+      <td>All 5 pipeline steps are <code>Pass</code> states in CDK</td>
+      <td>Replace with <code>LambdaInvoke</code> (analyst/structurer/tagger/alerter) and <code>EcsRunTask</code> (crawler)</td>
+      <td><span class="badge badge-critical">Critical</span></td>
+    </tr>
+    <tr>
+      <td><strong>No Fargate task definition</strong></td>
+      <td>CrawlingEngine is a Python class with no container definition</td>
+      <td>Add ECS Fargate task: app container + Tor sidecar container, task definition in CDK, ECR repo for image</td>
+      <td><span class="badge badge-critical">Critical</span></td>
+    </tr>
+    <tr>
+      <td><strong>OpenSearch network policy missing</strong></td>
+      <td>CDK creates VECTORSEARCH collection but no network policy scoping access to the VPC</td>
+      <td>Add <code>CfnAccessPolicy</code> and <code>CfnSecurityPolicy</code> to restrict to VPC endpoint only</td>
+      <td><span class="badge badge-critical">Critical</span></td>
+    </tr>
+    <tr>
+      <td><strong>No ECR repository</strong></td>
+      <td>No container registry defined in CDK</td>
+      <td>Add ECR repo + lifecycle policy in Core Stack; reference in Fargate task definition</td>
+      <td><span class="badge badge-high">High</span></td>
+    </tr>
+    <tr>
+      <td><strong>S3 encryption: S3-managed not CMK</strong></td>
+      <td><code>BucketEncryption.S3_MANAGED</code> in CDK</td>
+      <td>Switch to <code>BucketEncryption.KMS</code> with a CMK; bank-grade data classification requires customer-controlled keys</td>
+      <td><span class="badge badge-high">High</span></td>
+    </tr>
+    <tr>
+      <td><strong>No VPC endpoints for AWS services</strong></td>
+      <td>Lambda/ECS tasks would route S3/DynamoDB calls via NAT Gateway</td>
+      <td>Add <code>ec2.InterfaceVpcEndpoint</code> for Bedrock, Secrets Manager, S3 Gateway endpoint — eliminates NAT cost and data exfiltration risk</td>
+      <td><span class="badge badge-high">High</span></td>
+    </tr>
+    <tr>
+      <td><strong>Single NAT Gateway</strong></td>
+      <td>Core CDK: <code>nat_gateways=1</code></td>
+      <td>Set <code>nat_gateways=2</code> (one per AZ) — current setup is a single point of failure for all Tor egress traffic</td>
+      <td><span class="badge badge-high">High</span></td>
+    </tr>
+    <tr>
+      <td><strong>Standard Step Functions (should be Express)</strong></td>
+      <td>Default <code>sfn.StateMachine</code> = Standard Workflow</td>
+      <td>Set <code>state_machine_type=sfn.StateMachineType.EXPRESS</code> — at 5-min cadence, Standard Workflow pricing (~$0.025/1000 state transitions) becomes expensive; Express is ~$0.00001</td>
+      <td><span class="badge badge-medium">Medium</span></td>
+    </tr>
+    <tr>
+      <td><strong>No CI/CD pipeline</strong></td>
+      <td>Manual <code>cdk deploy</code></td>
+      <td>Add AWS CodePipeline + CodeBuild: run <code>pytest</code>, build Docker image, push to ECR, deploy CDK stacks with approval gate</td>
+      <td><span class="badge badge-medium">Medium</span></td>
+    </tr>
+    <tr>
+      <td><strong>No API Gateway for downstream consumers</strong></td>
+      <td>Alerts only via SNS/SQS</td>
+      <td>Add REST API Gateway (or API Gateway + Lambda) to expose STIX bundle queries and alert retrieval to SIEM/SOAR integrations with Cognito/IAM auth</td>
+      <td><span class="badge badge-medium">Medium</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ===================== HOW SERVICES CONNECT ===================== -->
+<div class="section-header"><i class="fa-solid fa-link"></i> How the Services Connect Together</div>
+
+<div class="flow-grid">
+  <div class="flow-box">
+    <h4>🕷 Crawl → Store path</h4>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div><strong>EventBridge Scheduler</strong> fires every 5 min → triggers <strong>Step Functions Express</strong></div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div>Step Functions → <strong>ECS RunTask</strong> → spins up Fargate task in Private subnet</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div>Fargate app container uses Tor sidecar (<code>127.0.0.1:9050</code>) → crawls .onion via <strong>NAT Gateway</strong> egress</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div><code>store_artifact()</code> → <strong>S3</strong> (raw content + annotation sidecar JSON)</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div>Circuit breaker state written to <strong>DynamoDB</strong> AgentStateTable via VPC Gateway Endpoint (no internet)</div></div>
+  </div>
+
+  <div class="flow-box">
+    <h4>🧠 Analyse → Structure path</h4>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div>Step Functions passes S3 key → <strong>Lambda</strong> Content Analyst invoked</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div>Lambda reads artifact from <strong>S3</strong> → calls <strong>Bedrock InvokeModel</strong> (Claude, via Interface Endpoint)</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div><strong>Bedrock Guardrails</strong> screens content before Claude processes it</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div>Data Structurer Lambda → creates STIX bundle → calls <strong>Bedrock Titan</strong> for embeddings → writes to <strong>OpenSearch Serverless</strong></div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div>STIX bundle also serialized to <strong>S3</strong> for Bedrock Managed KB RAG retrieval</div></div>
+  </div>
+
+  <div class="flow-box">
+    <h4>🏷 Tag → Alert path</h4>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div>Tagging Engine Lambda reads STIX bundle → applies ATT&amp;CK + taxonomy → writes tagged bundle back to <strong>S3</strong></div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div>MISP Integration Lambda calls <strong>Secrets Manager</strong> for API key → posts event to external MISP via VPC NAT</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div>Alert Generator Lambda reads <strong>DynamoDB</strong> ConvergenceTable → checks TTP convergence window (24h TTL)</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div>When 3+ items converge → publishes to <strong>SNS</strong> → fans out to <strong>SQS FIFO</strong> (SIEM), email subscription (SOC), and API Gateway webhook</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div><strong>CloudWatch + X-Ray</strong> traces entire execution; DLQ alarm fires to <strong>SNS</strong> (ops) on failure</div></div>
+  </div>
+
+  <div class="flow-box">
+    <h4>🔐 Security planes</h4>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div><strong>KMS CMK</strong> encrypts S3, DynamoDB, OpenSearch at rest — CloudTrail logs every decrypt call</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div><strong>IAM roles</strong> per agent — Crawling Engine can't call Bedrock; Analyst can't write to ConvergenceTable</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div><strong>VPC Interface Endpoints</strong> for Bedrock/Secrets Manager/OpenSearch — no data ever leaves the VPC for AWS API calls</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div><strong>GuardDuty</strong> monitors for anomalous behaviour (data exfil, unexpected cross-account calls)</div></div>
+    <div class="flow-item"><i class="fa-solid fa-circle-dot"></i><div><strong>Security Hub</strong> aggregates Inspector (container vulns), IAM Access Analyzer, and GuardDuty findings into one dashboard</div></div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.service-card').forEach((card, i) => {
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(10px)';
+    setTimeout(() => {
+      card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+      card.style.opacity = '1';
+      card.style.transform = 'none';
+    }, 60 + i * 30);
+  });
+</script>
+
+
+</body></html>
