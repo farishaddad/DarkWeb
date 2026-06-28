@@ -71,13 +71,10 @@ class DarkWebFraudIntelligenceStack(Stack):
         # the VPC's interface endpoints.
         # =====================================================================
 
-        # Retrieve the OpenSearch Serverless VPC endpoint ID
-        # This is the Interface Endpoint created in CoreStack
-        opensearch_vpc_endpoint_id = core_stack.vpc.node.find_child(
-            "OpenSearchServerlessEndpoint"
-        ).vpc_endpoint_id
-
-        network_policy = aoss.CfnNetworkPolicy(
+        # Network policy: allow from public (Lambda functions reach OpenSearch
+        # via public HTTPS + IAM SigV4 auth — VPC endpoint removed to avoid
+        # cross-stack dependency cycles).
+        network_policy = aoss.CfnSecurityPolicy(
             self,
             "NetworkPolicy",
             name="threat-intel-network",
@@ -94,9 +91,7 @@ class DarkWebFraudIntelligenceStack(Stack):
                             "Resource": ["collection/threat-intel"],
                         },
                     ],
-                    "AllowFromPublic": False,
-                    # Only allow access via the VPC Interface Endpoint
-                    "SourceVPCEs": [opensearch_vpc_endpoint_id],
+                    "AllowFromPublic": True,
                 }
             ]),
         )
@@ -133,7 +128,7 @@ class DarkWebFraudIntelligenceStack(Stack):
                     ],
                     # Write access: Data Structurer only
                     "Principal": [
-                        f"arn:aws:iam::{account_id}:role/dark-web-fraud-data-structurer-role",
+                        f"arn:aws:iam::672203048513:role/dark-web-fraud-data-structurer-role",
                     ],
                 },
                 {
@@ -154,8 +149,7 @@ class DarkWebFraudIntelligenceStack(Stack):
                     ],
                     # Read access: Alert Generator + Bedrock Knowledge Base service
                     "Principal": [
-                        f"arn:aws:iam::{account_id}:role/dark-web-fraud-alert-generator-role",
-                        "arn:aws:iam::aws:policy/AmazonBedrockFullAccess",
+                        f"arn:aws:iam::672203048513:role/dark-web-fraud-alert-generator-role",
                     ],
                 },
             ]),

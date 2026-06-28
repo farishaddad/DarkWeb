@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="/vendor/highcharts/highcharts.js"></script>
+<script src="/vendor/highcharts/modules/accessibility.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--color-bg);
+    font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+    color: var(--color-text, #1a1a2e);
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 20px 24px 40px;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .header-left h1 { font-size: 18px; font-weight: 700; color: var(--color-text); }
+  .header-left .sub { font-size: 12px; color: var(--color-text-muted, #888); margin-top: 2px; }
+  .pipeline-status {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--color-bg-secondary, #f4f5f7);
+    border: 1px solid var(--color-border-light, #e4e7ec);
+    border-radius: 8px; padding: 8px 14px;
+    font-size: 12px;
+  }
+  .pulse { width: 8px; height: 8px; background: #3fb950; border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+  .status-label { color: var(--color-text-secondary, #5c6778); }
+  .status-val { font-weight: 700; color: var(--color-text); }
+
+  /* ── PIPELINE FLOW ── */
+  .pipeline-bar {
+    display: flex; align-items: center; gap: 0;
+    background: var(--color-bg-secondary, #f4f5f7);
+    border: 1px solid var(--color-border-light, #e4e7ec);
+    border-radius: 10px; padding: 14px 18px; margin-bottom: 20px;
+    overflow-x: auto;
+  }
+  .pstep {
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    min-width: 110px; flex-shrink: 0;
+  }
+  .pstep-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; margin-bottom: 6px; position: relative;
+  }
+  .pstep-name { font-size: 11px; font-weight: 700; color: var(--color-text); }
+  .pstep-sub { font-size: 10px; color: var(--color-text-muted, #888); margin-top: 2px; }
+  .pstep-count {
+    font-size: 11px; font-weight: 700; margin-top: 4px;
+    font-family: var(--font-mono, monospace);
+  }
+  .parrow { color: var(--color-text-muted, #bbb); font-size: 16px; margin: 0 4px 22px; flex-shrink: 0; }
+  .step-running .pstep-icon { box-shadow: 0 0 0 3px rgba(63,185,80,0.3); }
+  .step-idle .pstep-icon { opacity: 0.6; }
+
+  /* ── KPI GRID ── */
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px;
+  }
+  .kpi-card {
+    background: var(--color-bg-secondary, #f4f5f7);
+    border: 1px solid var(--color-border-light, #e4e7ec);
+    border-radius: 10px; padding: 14px 16px;
+    transition: box-shadow 0.15s;
+    cursor: default;
+  }
+  .kpi-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .kpi-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--color-text-muted, #888); margin-bottom: 6px;
+  }
+  .kpi-val {
+    font-size: 26px; font-weight: 700;
+    font-family: var(--font-mono, monospace); line-height: 1;
+  }
+  .kpi-delta { font-size: 11px; margin-top: 4px; }
+  .kpi-delta.up { color: #3fb950; }
+  .kpi-delta.down { color: #f85149; }
+  .kpi-delta.neutral { color: var(--color-text-muted, #888); }
+
+  /* ── MAIN GRID ── */
+  .main-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;
+  }
+  .full-row { grid-column: 1 / -1; }
+  .card {
+    background: var(--color-bg-secondary, #f4f5f7);
+    border: 1px solid var(--color-border-light, #e4e7ec);
+    border-radius: 10px; padding: 16px;
+  }
+  .card-title {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--color-text-secondary, #5c6778);
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .card-title i { font-size: 12px; }
+
+  /* ── ALERT FEED ── */
+  .alert-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--color-border-light, #e8eaed);
+  }
+  .alert-item:last-child { border-bottom: none; }
+  .alert-sev {
+    flex-shrink: 0; width: 6px; border-radius: 3px; align-self: stretch;
+    min-height: 40px;
+  }
+  .sev-critical { background: #f85149; }
+  .sev-high     { background: #d97706; }
+  .sev-medium   { background: #0284c7; }
+  .sev-low      { background: #3fb950; }
+  .alert-body { flex: 1; }
+  .alert-title { font-size: 12px; font-weight: 700; color: var(--color-text); margin-bottom: 3px; }
+  .alert-meta { font-size: 11px; color: var(--color-text-muted, #888); }
+  .alert-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .tag {
+    display: inline-block; padding: 1px 6px; border-radius: 100px;
+    font-size: 10px; font-weight: 600; border: 1px solid;
+  }
+  .tag-ttp    { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+  .tag-ioc    { background: #e0f2fe; color: #0369a1; border-color: #bae6fd; }
+  .tag-mitre  { background: #f3e8ff; color: #6d28d9; border-color: #ddd6fe; }
+  .tag-review { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+  .badge-sev {
+    flex-shrink: 0; padding: 2px 8px; border-radius: 100px;
+    font-size: 10px; font-weight: 700; align-self: flex-start;
+  }
+  .bs-critical { background: #fee2e2; color: #b91c1c; }
+  .bs-high     { background: #fef3c7; color: #92400e; }
+  .bs-medium   { background: #e0f2fe; color: #0369a1; }
+
+  /* ── TTP BREAKDOWN TABLE ── */
+  .ttp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .ttp-table th {
+    text-align: left; padding: 6px 8px; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--color-text-muted, #888);
+    border-bottom: 2px solid var(--color-border, #d0d4db);
+  }
+  .ttp-table td { padding: 8px 8px; border-bottom: 1px solid var(--color-border-light, #e8eaed); }
+  .ttp-table tr:last-child td { border-bottom: none; }
+  .ttp-table tr:hover td { background: rgba(0,82,204,0.03); }
+  .ttp-bar-wrap { background: var(--color-border-light, #e8eaed); border-radius: 3px; height: 6px; width: 100%; }
+  .ttp-bar { height: 6px; border-radius: 3px; }
+
+  /* ── CRAWL LOG ── */
+  .log-line {
+    display: flex; gap: 8px; padding: 5px 0;
+    border-bottom: 1px solid var(--color-border-light, #e8eaed);
+    font-size: 11px;
+    align-items: flex-start;
+  }
+  .log-line:last-child { border-bottom: none; }
+  .log-ts { color: var(--color-text-muted, #888); font-family: monospace; flex-shrink: 0; }
+  .log-src { color: var(--color-primary, #0052cc); font-weight: 600; flex-shrink: 0; min-width: 100px; }
+  .log-msg { color: var(--color-text-secondary, #5c6778); }
+  .log-ok  { color: #3fb950; }
+  .log-warn { color: #d97706; }
+  .log-err  { color: #f85149; }
+
+  /* ── ENTITY CLOUD ── */
+  .entity-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .entity-type {
+    width: 70px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--color-text-muted, #888); flex-shrink: 0;
+  }
+  .entity-chips { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
+  .entity-chip {
+    padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 500;
+    border: 1px solid; font-family: monospace;
+  }
+  .ec-ip     { background: #e8f0fe; color: #1a56db; border-color: #c3d8fd; }
+  .ec-btc    { background: #fff8e1; color: #b45309; border-color: #fde68a; }
+  .ec-bin    { background: #e8fef0; color: #0a7c3e; border-color: #b3f0cc; }
+  .ec-swift  { background: #f3e8ff; color: #6d28d9; border-color: #ddd6fe; }
+  .ec-email  { background: #fee8e8; color: #b91c1c; border-color: #fecaca; }
+  .ec-bank   { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+
+  /* ── CONVERGENCE INDICATOR ── */
+  .conv-row { display: flex; align-items: center; gap: 10px; padding: 8px 0;
+              border-bottom: 1px solid var(--color-border-light, #e8eaed); }
+  .conv-row:last-child { border-bottom: none; }
+  .conv-ttp { font-size: 12px; font-weight: 600; flex: 1; color: var(--color-text); }
+  .conv-count { font-size: 11px; color: var(--color-text-muted, #888); }
+  .conv-dots { display: flex; gap: 4px; }
+  .conv-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--color-border, #ccc); }
+  .conv-dot.filled { background: #f85149; }
+  .conv-dot.half { background: #d97706; }
+
+  /* Highcharts overrides */
+  .highcharts-background { fill: transparent !important; }
+  .highcharts-title { fill: var(--color-text, #1a1a2e) !important; }
+  .highcharts-axis-labels text { fill: var(--color-text-muted, #888) !important; }
+  .highcharts-grid-line { stroke: var(--color-border-light, #e4e7ec) !important; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1><i class="fa-solid fa-spider" style="color:#6d28d9; margin-right:8px;"></i>Dark Web Fraud Intelligence — Operations Dashboard</h1>
+    <div class="sub">Live pipeline · us-east-1 · Account 672203048513</div>
+  </div>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <div class="pipeline-status">
+      <div class="pulse"></div>
+      <span class="status-label">Pipeline:</span>
+      <span class="status-val">RUNNING</span>
+    </div>
+    <div class="pipeline-status">
+      <i class="fa-solid fa-clock" style="color:var(--color-text-muted,#888);"></i>
+      <span class="status-label">Last run:</span>
+      <span class="status-val">2m 14s ago</span>
+    </div>
+    <div class="pipeline-status">
+      <i class="fa-solid fa-calendar" style="color:var(--color-text-muted,#888);"></i>
+      <span class="status-val">27 Jun 2026, 18:09 UTC</span>
+    </div>
+  </div>
+</div>
+
+<!-- Pipeline stage flow -->
+<div class="pipeline-bar">
+  <div class="pstep step-idle">
+    <div class="pstep-icon" style="background:#e8f0fe; color:#1a56db;"><i class="fa-solid fa-calendar-check"></i></div>
+    <div class="pstep-name">Scheduler</div>
+    <div class="pstep-sub">EventBridge</div>
+    <div class="pstep-count" style="color:#3fb950;">✓ 5m cycle</div>
+  </div>
+  <div class="parrow"><i class="fa-solid fa-chevron-right"></i></div>
+  <div class="pstep step-running">
+    <div class="pstep-icon" style="background:#fff3cd; color:#b45309;"><i class="fa-solid fa-spider" style="animation:pulse 1s infinite;"></i></div>
+    <div class="pstep-name">Crawling Engine</div>
+    <div class="pstep-sub">Fargate + Tor</div>
+    <div class="pstep-count" style="color:#3fb950;">247 sources</div>
+  </div>
+  <div class="parrow"><i class="fa-solid fa-chevron-right"></i></div>
+  <div class="pstep step-idle">
+    <div class="pstep-icon" style="background:#fce8f3; color:#9c1c64;"><i class="fa-solid fa-brain"></i></div>
+    <div class="pstep-name">Content Analyst</div>
+    <div class="pstep-sub">Claude Opus 4</div>
+    <div class="pstep-count" style="color:#0284c7;">83 relevant</div>
+  </div>
+  <div class="parrow"><i class="fa-solid fa-chevron-right"></i></div>
+  <div class="pstep step-idle">
+    <div class="pstep-icon" style="background:#e8fef0; color:#0a7c3e;"><i class="fa-solid fa-diagram-project"></i></div>
+    <div class="pstep-name">Data Structurer</div>
+    <div class="pstep-sub">STIX 2.1</div>
+    <div class="pstep-count" style="color:#0284c7;">412 objects</div>
+  </div>
+  <div class="parrow"><i class="fa-solid fa-chevron-right"></i></div>
+  <div class="pstep step-idle">
+    <div class="pstep-icon" style="background:#fff8e1; color:#b45309;"><i class="fa-solid fa-tags"></i></div>
+    <div class="pstep-name">Tagging Engine</div>
+    <div class="pstep-sub">ATT&CK + MISP</div>
+    <div class="pstep-count" style="color:#0284c7;">1,247 tags</div>
+  </div>
+  <div class="parrow"><i class="fa-solid fa-chevron-right"></i></div>
+  <div class="pstep step-idle">
+    <div class="pstep-icon" style="background:#fee8e8; color:#b91c1c;"><i class="fa-solid fa-bell"></i></div>
+    <div class="pstep-name">Alert Generator</div>
+    <div class="pstep-sub">SNS → SIEM</div>
+    <div class="pstep-count" style="color:#f85149;">3 campaigns</div>
+  </div>
+</div>
+
+<!-- KPI row -->
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Sources Crawled (24h)</div>
+    <div class="kpi-val" id="k1">0</div>
+    <div class="kpi-delta up" id="k1d">↑ +12% vs yesterday</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Fraud-Relevant Items</div>
+    <div class="kpi-val" id="k2">0</div>
+    <div class="kpi-delta neutral">33.6% hit rate</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">STIX Objects Created</div>
+    <div class="kpi-val" id="k3">0</div>
+    <div class="kpi-delta up">↑ +8% vs yesterday</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Alerts Fired (24h)</div>
+    <div class="kpi-val" id="k4" style="color:#f85149;">0</div>
+    <div class="kpi-delta down">↑ +3 new campaigns</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Bedrock Tokens Used</div>
+    <div class="kpi-val" id="k5">0</div>
+    <div class="kpi-delta neutral">~$4.20 cost today</div>
+  </div>
+</div>
+
+<!-- Main grid -->
+<div class="main-grid">
+
+  <!-- Alert feed -->
+  <div class="card">
+    <div class="card-title"><i class="fa-solid fa-bell" style="color:#f85149;"></i> Live Alert Feed</div>
+
+    <div class="alert-item">
+      <div class="alert-sev sev-critical"></div>
+      <div class="alert-body">
+        <div class="alert-title">🚨 Campaign Convergence: MFA Bypass (T1111) — 6 items in 4h</div>
+        <div class="alert-meta">3 forums · 2 marketplaces · 1 Telegram · 18:03 UTC</div>
+        <div class="alert-tags">
+          <span class="tag tag-mitre">T1111</span>
+          <span class="tag tag-ttp">mfa-bypass</span>
+          <span class="tag tag-ioc">BINs: 12 extracted</span>
+        </div>
+      </div>
+      <span class="badge-sev bs-critical">CRITICAL</span>
+    </div>
+
+    <div class="alert-item">
+      <div class="alert-sev sev-high"></div>
+      <div class="alert-body">
+        <div class="alert-title">Fullz dump targeting UK retail banks — 8,400 records</div>
+        <div class="alert-meta">BreachForum mirror · SWIFT: NWBKGB2LXXX detected · 17:51 UTC</div>
+        <div class="alert-tags">
+          <span class="tag tag-mitre">T1078</span>
+          <span class="tag tag-ttp">account-takeover</span>
+          <span class="tag tag-ioc">email:847 · ip:23</span>
+        </div>
+      </div>
+      <span class="badge-sev bs-high">HIGH</span>
+    </div>
+
+    <div class="alert-item">
+      <div class="alert-sev sev-high"></div>
+      <div class="alert-body">
+        <div class="alert-title">Phishing kit v4.2 — Barclays / NatWest / HSBC template pack</div>
+        <div class="alert-meta">Marketplace listing · BTC: bc1q...7f3a · 17:44 UTC</div>
+        <div class="alert-tags">
+          <span class="tag tag-mitre">T1566.001</span>
+          <span class="tag tag-ttp">phishing-kit</span>
+          <span class="tag tag-ioc">BTC wallet</span>
+        </div>
+      </div>
+      <span class="badge-sev bs-high">HIGH</span>
+    </div>
+
+    <div class="alert-item">
+      <div class="alert-sev sev-medium"></div>
+      <div class="alert-body">
+        <div class="alert-title">OTP interception guide — SIM swap methodology update</div>
+        <div class="alert-meta">Forum thread · 17:32 UTC</div>
+        <div class="alert-tags">
+          <span class="tag tag-mitre">T1111</span>
+          <span class="tag tag-review">requires-review</span>
+        </div>
+      </div>
+      <span class="badge-sev bs-medium">MEDIUM</span>
+    </div>
+
+    <div class="alert-item">
+      <div class="alert-sev sev-medium"></div>
+      <div class="alert-body">
+        <div class="alert-title">Synthetic identity creation tool — targeting UK NI numbers</div>
+        <div class="alert-meta">Paste site · 17:18 UTC</div>
+        <div class="alert-tags">
+          <span class="tag tag-mitre">T1585.001</span>
+          <span class="tag tag-ttp">synthetic-identity</span>
+        </div>
+      </div>
+      <span class="badge-sev bs-medium">MEDIUM</span>
+    </div>
+  </div>
+
+  <!-- Entity harvest -->
+  <div class="card">
+    <div class="card-title"><i class="fa-solid fa-magnifying-glass" style="color:#0284c7;"></i> Extracted Entities (current run)</div>
+
+    <div class="entity-row">
+      <div class="entity-type">IP Addrs</div>
+      <div class="entity-chips">
+        <span class="entity-chip ec-ip">185.220.101.47</span>
+        <span class="entity-chip ec-ip">194.165.16.11</span>
+        <span class="entity-chip ec-ip">45.142.212.100</span>
+        <span class="entity-chip ec-ip" style="opacity:0.6;">+20 more</span>
+      </div>
+    </div>
+    <div class="entity-row">
+      <div class="entity-type">BTC Wallets</div>
+      <div class="entity-chips">
+        <span class="entity-chip ec-btc">bc1q4dg...7f3a</span>
+        <span class="entity-chip ec-btc">1A1zP1...3GfE</span>
+        <span class="entity-chip ec-btc" style="opacity:0.6;">+7 more</span>
+      </div>
+    </div>
+    <div class="entity-row">
+      <div class="entity-type">BINs</div>
+      <div class="entity-chips">
+        <span class="entity-chip ec-bin">453920</span>
+        <span class="entity-chip ec-bin">518135</span>
+        <span class="entity-chip ec-bin">404610</span>
+        <span class="entity-chip ec-bin">476173</span>
+        <span class="entity-chip ec-bin" style="opacity:0.6;">+8 more</span>
+      </div>
+    </div>
+    <div class="entity-row">
+      <div class="entity-type">SWIFT</div>
+      <div class="entity-chips">
+        <span class="entity-chip ec-swift">NWBKGB2L</span>
+        <span class="entity-chip ec-swift">BARCGB22</span>
+        <span class="entity-chip ec-swift">HBUKGB4B</span>
+      </div>
+    </div>
+    <div class="entity-row">
+      <div class="entity-type">Emails</div>
+      <div class="entity-chips">
+        <span class="entity-chip ec-email">drop1@proton.me</span>
+        <span class="entity-chip ec-email">cash@pm.me</span>
+        <span class="entity-chip ec-email" style="opacity:0.6;">+34 more</span>
+      </div>
+    </div>
+    <div class="entity-row">
+      <div class="entity-type">Targets</div>
+      <div class="entity-chips">
+        <span class="entity-chip ec-bank">Barclays</span>
+        <span class="entity-chip ec-bank">NatWest</span>
+        <span class="entity-chip ec-bank">HSBC UK</span>
+        <span class="entity-chip ec-bank">Monzo</span>
+        <span class="entity-chip ec-bank">Starling</span>
+      </div>
+    </div>
+
+    <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--color-border-light,#e8eaed);">
+      <div class="card-title" style="margin-bottom:8px;"><i class="fa-solid fa-fire" style="color:#f85149;"></i> Campaign Convergence Tracker</div>
+      <div class="conv-row">
+        <div class="conv-ttp">T1111 — MFA Bypass</div>
+        <div class="conv-count">6/3 threshold</div>
+        <div class="conv-dots">
+          <div class="conv-dot filled"></div><div class="conv-dot filled"></div><div class="conv-dot filled"></div>
+          <div class="conv-dot filled" style="background:#f85149; opacity:0.7;"></div>
+          <div class="conv-dot filled" style="background:#f85149; opacity:0.5;"></div>
+          <div class="conv-dot filled" style="background:#f85149; opacity:0.3;"></div>
+        </div>
+        <span style="font-size:10px; background:#fee2e2; color:#b91c1c; padding:1px 6px; border-radius:100px; font-weight:700;">ALERT FIRED</span>
+      </div>
+      <div class="conv-row">
+        <div class="conv-ttp">T1566.001 — Phishing Kit</div>
+        <div class="conv-count">2/3 threshold</div>
+        <div class="conv-dots">
+          <div class="conv-dot half"></div><div class="conv-dot half"></div>
+          <div class="conv-dot"></div>
+        </div>
+        <span style="font-size:10px; background:#fef3c7; color:#92400e; padding:1px 6px; border-radius:100px; font-weight:700;">WATCHING</span>
+      </div>
+      <div class="conv-row">
+        <div class="conv-ttp">T1585.001 — Synthetic Identity</div>
+        <div class="conv-count">1/3 threshold</div>
+        <div class="conv-dots">
+          <div class="conv-dot" style="background:#0284c7;"></div>
+          <div class="conv-dot"></div><div class="conv-dot"></div>
+        </div>
+        <span style="font-size:10px; background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:100px; font-weight:700;">TRACKING</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fraud category chart -->
+  <div class="card">
+    <div class="card-title"><i class="fa-solid fa-chart-bar" style="color:#6d28d9;"></i> Fraud Category Distribution (7 days)</div>
+    <div id="cat-chart" style="height:220px;"></div>
+  </div>
+
+  <!-- Severity over time -->
+  <div class="card">
+    <div class="card-title"><i class="fa-solid fa-chart-line" style="color:#f85149;"></i> Alert Severity Trend (7 days)</div>
+    <div id="sev-chart" style="height:220px;"></div>
+  </div>
+
+  <!-- TTP breakdown -->
+  <div class="card full-row">
+    <div class="card-title"><i class="fa-solid fa-shield-halved" style="color:#d97706;"></i> MITRE ATT&CK Technique Activity (last 24h)</div>
+    <table class="ttp-table">
+      <thead>
+        <tr>
+          <th>Technique</th>
+          <th>ID</th>
+          <th>Category</th>
+          <th>Hits</th>
+          <th>Trend</th>
+          <th>Volume</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Multi-Factor Authentication Interception</strong></td>
+          <td><span class="tag tag-mitre">T1111</span></td>
+          <td>mfa_bypass</td>
+          <td><strong style="color:#f85149;">47</strong></td>
+          <td style="color:#f85149;">↑ +31%</td>
+          <td><div class="ttp-bar-wrap"><div class="ttp-bar" style="width:94%; background:#f85149;"></div></div></td>
+        </tr>
+        <tr>
+          <td><strong>Valid Accounts</strong></td>
+          <td><span class="tag tag-mitre">T1078</span></td>
+          <td>account_takeover</td>
+          <td><strong>38</strong></td>
+          <td style="color:#f85149;">↑ +12%</td>
+          <td><div class="ttp-bar-wrap"><div class="ttp-bar" style="width:76%; background:#d97706;"></div></div></td>
+        </tr>
+        <tr>
+          <td><strong>Phishing — Spearphishing Attachment</strong></td>
+          <td><span class="tag tag-mitre">T1566.001</span></td>
+          <td>phishing_kit</td>
+          <td><strong>29</strong></td>
+          <td style="color:#3fb950;">↓ -4%</td>
+          <td><div class="ttp-bar-wrap"><div class="ttp-bar" style="width:58%; background:#0284c7;"></div></div></td>
+        </tr>
+        <tr>
+          <td><strong>Steal Web Session Cookie</strong></td>
+          <td><span class="tag tag-mitre">T1539</span></td>
+          <td>cnp_fraud</td>
+          <td><strong>21</strong></td>
+          <td style="color:#f85149;">↑ +7%</td>
+          <td><div class="ttp-bar-wrap"><div class="ttp-bar" style="width:42%; background:#6d28d9;"></div></div></td>
+        </tr>
+        <tr>
+          <td><strong>Establish Accounts — Social Media</strong></td>
+          <td><span class="tag tag-mitre">T1585.001</span></td>
+          <td>synthetic_identity</td>
+          <td><strong>14</strong></td>
+          <td style="color:#3fb950;">↓ -2%</td>
+          <td><div class="ttp-bar-wrap"><div class="ttp-bar" style="width:28%; background:#3fb950;"></div></div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Crawl log -->
+  <div class="card">
+    <div class="card-title"><i class="fa-solid fa-terminal" style="color:#3fb950;"></i> Live Crawl Log</div>
+    <div class="log-line"><span class="log-ts">18:09:42</span><span class="log-src log-ok">✓ dream-mkt.onion</span><span class="log-msg">247 chars · hash: a3f8b2 · tier: TTP</span></div>
+    <div class="log-line"><span class="log-ts">18:09:39</span><span class="log-src log-ok">✓ fraud-talk.onion</span><span class="log-msg">1,842 chars · 12 entities extracted</span></div>
+    <div class="log-line"><span class="log-ts">18:09:35</span><span class="log-src log-warn">⚡ exploit.in mirror</span><span class="log-msg">Circuit rotated · retry 2/3</span></div>
+    <div class="log-line"><span class="log-ts">18:09:31</span><span class="log-src log-ok">✓ t.me/cardshop_uk</span><span class="log-msg">Fullz listing · 8,400 records · SWIFT detected</span></div>
+    <div class="log-line"><span class="log-ts">18:09:28</span><span class="log-src log-err">✗ bfclub.onion</span><span class="log-msg">Circuit breaker OPEN · failures: 5/5</span></div>
+    <div class="log-line"><span class="log-ts">18:09:24</span><span class="log-src log-ok">✓ paste7.onion</span><span class="log-msg">NI number patterns detected · synthetic identity</span></div>
+    <div class="log-line"><span class="log-ts">18:09:20</span><span class="log-src log-ok">✓ crdclub.ws mirror</span><span class="log-msg">Phishing kit v4.2 · BTC wallet found</span></div>
+    <div class="log-line"><span class="log-ts">18:09:16</span><span class="log-src log-warn">⚡ 0day.onion</span><span class="log-msg">Guardrails intervened · content filtered</span></div>
+  </div>
+
+  <!-- OpenSearch / STIX stats -->
+  <div class="card">
+    <div class="card-title"><i class="fa-solid fa-database" style="color:#0284c7;"></i> Intelligence Store Health</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+      <div style="background:var(--color-bg,#fff); border:1px solid var(--color-border-light,#e8eaed); border-radius:8px; padding:12px;">
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--color-text-muted,#888);">OpenSearch Vectors</div>
+        <div style="font-size:22px; font-weight:700; font-family:monospace; margin-top:4px;">14,287</div>
+        <div style="font-size:11px; color:#3fb950;">+412 this run</div>
+      </div>
+      <div style="background:var(--color-bg,#fff); border:1px solid var(--color-border-light,#e8eaed); border-radius:8px; padding:12px;">
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--color-text-muted,#888);">STIX Bundles (S3)</div>
+        <div style="font-size:22px; font-weight:700; font-family:monospace; margin-top:4px;">2,841</div>
+        <div style="font-size:11px; color:#3fb950;">+83 this run</div>
+      </div>
+      <div style="background:var(--color-bg,#fff); border:1px solid var(--color-border-light,#e8eaed); border-radius:8px; padding:12px;">
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--color-text-muted,#888);">MISP Events Pushed</div>
+        <div style="font-size:22px; font-weight:700; font-family:monospace; margin-top:4px;">1,204</div>
+        <div style="font-size:11px; color:#3fb950;">+41 this run</div>
+      </div>
+      <div style="background:var(--color-bg,#fff); border:1px solid var(--color-border-light,#e8eaed); border-radius:8px; padding:12px;">
+        <div style="font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--color-text-muted,#888);">DLQ Depth</div>
+        <div style="font-size:22px; font-weight:700; font-family:monospace; margin-top:4px; color:#3fb950;">0</div>
+        <div style="font-size:11px; color:var(--color-text-muted,#888);">No failures</div>
+      </div>
+    </div>
+    <div id="intel-chart" style="height:130px;"></div>
+  </div>
+
+</div>
+
+<script>
+// KPI counter animations
+function animateCount(id, target, prefix, suffix) {
+  let start = 0;
+  const el = document.getElementById(id);
+  if (!el) return;
+  const step = () => {
+    start = Math.min(start + Math.ceil(target / 40), target);
+    el.textContent = (prefix||'') + start.toLocaleString() + (suffix||'');
+    if (start < target) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+animateCount('k1', 3247);
+animateCount('k2', 1092);
+animateCount('k3', 5614);
+animateCount('k4', 19);
+animateCount('k5', 2184, '', 'K');
+
+// Fraud category chart
+Highcharts.chart('cat-chart', {
+  chart: { type: 'bar', backgroundColor: 'transparent', margin: [0,10,30,130] },
+  title: { text: null },
+  xAxis: {
+    categories: ['MFA Bypass', 'Acct Takeover', 'Phishing Kit', 'CNP Fraud', 'Synthetic ID'],
+    labels: { style: { fontSize: '11px', color: '#888' } },
+    lineWidth: 0, tickWidth: 0,
+  },
+  yAxis: { title: null, gridLineColor: '#e4e7ec', labels: { style: { fontSize:'10px', color:'#888' } } },
+  legend: { enabled: false },
+  tooltip: { valueSuffix: ' items' },
+  plotOptions: { bar: { borderRadius: 4, colorByPoint: true, dataLabels: { enabled: true, style: { fontSize:'10px' } } } },
+  colors: ['#f85149','#d97706','#0284c7','#6d28d9','#3fb950'],
+  series: [{ name: 'Items', data: [47, 38, 29, 21, 14] }],
+  credits: { enabled: false },
+});
+
+// Severity trend line
+Highcharts.chart('sev-chart', {
+  chart: { type: 'areaspline', backgroundColor: 'transparent', margin: [10,10,30,30] },
+  title: { text: null },
+  xAxis: {
+    categories: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+    labels: { style: { fontSize:'10px', color:'#888' } },
+    lineColor: '#e4e7ec',
+  },
+  yAxis: { title: null, gridLineColor: '#e4e7ec', labels: { style: { fontSize:'10px', color:'#888' } } },
+  legend: { itemStyle: { fontSize:'10px', color:'#888' } },
+  tooltip: { shared: true },
+  plotOptions: { areaspline: { fillOpacity: 0.15, lineWidth: 2, marker: { radius: 3 } } },
+  series: [
+    { name: 'Critical', data: [2,1,3,1,4,2,3], color: '#f85149' },
+    { name: 'High',     data: [5,7,4,8,6,7,9], color: '#d97706' },
+    { name: 'Medium',   data: [9,8,11,7,10,8,7], color: '#0284c7' },
+  ],
+  credits: { enabled: false },
+});
+
+// Intel store volume sparkline
+Highcharts.chart('intel-chart', {
+  chart: { type: 'column', backgroundColor: 'transparent', margin: [5,0,20,30] },
+  title: { text: null },
+  xAxis: {
+    categories: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+    labels: { style: { fontSize:'10px', color:'#888' } }, lineColor:'#e4e7ec',
+  },
+  yAxis: { title: null, gridLineColor: '#e4e7ec', labels: { style:{ fontSize:'10px', color:'#888' } } },
+  legend: { enabled: false },
+  tooltip: { valueSuffix: ' STIX objects' },
+  plotOptions: { column: { borderRadius: 3, borderWidth: 0 } },
+  series: [{ name: 'STIX Objects', data: [612,784,541,892,723,456,412], color: '#0284c7' }],
+  credits: { enabled: false },
+});
+</script>
+</body>
+</html>

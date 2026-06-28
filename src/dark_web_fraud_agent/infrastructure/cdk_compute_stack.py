@@ -5,7 +5,7 @@ Defines:
 - ECS Cluster + Fargate Task Definition (app container + Tor sidecar)
 - Security Group for crawl tasks (egress-only, no inbound)
 - Lambda functions for the 4 stateless agents (Content Analyst, Data Structurer,
-  Tagging Engine, Alert Generator) — each with a dedicated IAM role scoped to
+  Tagging Engine, Alert Generator) - each with a dedicated IAM role scoped to
   exactly the permissions that agent's code calls
 - DynamoDB Streams event source on the ConvergenceTable to trigger the Alert
   Generator reactively when convergence thresholds are crossed
@@ -23,6 +23,12 @@ from aws_cdk import (
     Duration,
     RemovalPolicy,
     Stack,
+    aws_sns as sns,
+    aws_ssm as ssm,
+    aws_dynamodb as dynamodb,
+    aws_s3 as s3,
+    aws_secretsmanager as secretsmanager,
+
     aws_ec2 as ec2,
     aws_ecr as ecr,
     aws_ecs as ecs,
@@ -51,27 +57,41 @@ class DarkWebFraudComputeStack(Stack):
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # Unpack cross-stack references
-        vpc = core_stack.vpc
-        artifacts_bucket = core_stack.artifacts_bucket
-        agent_state_table = core_stack.agent_state_table
-        convergence_table = core_stack.convergence_table
-        tor_credentials = core_stack.tor_credentials
-        misp_api_key = core_stack.misp_api_key
-        kms_key = core_stack.kms_key
+        # Import cross-stack resources using string ARNs only.
+        # Using from_*_arn() creates non-owned L2 constructs that do NOT add
+        # Fn::ImportValue cross-stack edges - eliminating the CDK DependencyCycle.
+        region = Stack.of(self).region
+        account = Stack.of(self).account
+
+        artifacts_bucket = s3.Bucket.from_bucket_arn(
+            self, "ImportedBucket", core_stack.artifacts_bucket.bucket_arn
+        )
+        agent_state_table = dynamodb.Table.from_table_arn(
+            self, "ImportedAgentStateTable", core_stack.agent_state_table.table_arn
+        )
+        convergence_table = dynamodb.Table.from_table_attributes(
+            self, "ImportedConvergenceTable",
+            table_arn=core_stack.convergence_table.table_arn,
+            table_stream_arn=core_stack.convergence_table.table_stream_arn,
+        )
+        tor_credentials = secretsmanager.Secret.from_secret_complete_arn(
+            self, "ImportedTorCreds", core_stack.tor_credentials.secret_full_arn
+        )
+        misp_api_key = secretsmanager.Secret.from_secret_complete_arn(
+            self, "ImportedMispKey", core_stack.misp_api_key.secret_full_arn
+        )
+        vpc = core_stack.vpc  # VPC lookup is read-only; no resource policy added
 
         opensearch_endpoint = intelligence_stack.opensearch_collection.attr_collection_endpoint
         opensearch_arn = intelligence_stack.opensearch_collection.attr_arn
 
         # =====================================================================
-        # ECR Repository — Crawling Engine container image
+        # ECR Repository - Crawling Engine container image
         # =====================================================================
         self.crawling_ecr_repo = ecr.Repository(
             self,
             "CrawlingEngineRepo",
             repository_name="dark-web-fraud/crawling-engine",
-            encryption=ecr.RepositoryEncryption.KMS,
-            encryption_key=kms_key,
             image_scan_on_push=True,
             removal_policy=RemovalPolicy.RETAIN,
             lifecycle_rules=[
@@ -90,11 +110,11 @@ class DarkWebFraudComputeStack(Stack):
             "FraudAgentCluster",
             cluster_name="dark-web-fraud-agents",
             vpc=vpc,
-            container_insights=True,
+            container_insights_v2=ecs.ContainerInsights.ENHANCED,
         )
 
         # =====================================================================
-        # IAM Roles — Fargate task (task role + execution role)
+        # IAM Roles - Fargate task (task role + execution role)
         # =====================================================================
 
         # Task Role: runtime permissions for the crawling engine container code
@@ -105,10 +125,24 @@ class DarkWebFraudComputeStack(Stack):
             role_name="dark-web-fraud-crawl-task-role",
             description="Runtime permissions for the Crawling Engine Fargate task",
         )
-        artifacts_bucket.grant_read_write(self.crawl_task_role)
-        agent_state_table.grant_read_write_data(self.crawl_task_role)
-        tor_credentials.grant_read(self.crawl_task_role)
-        kms_key.grant_encrypt_decrypt(self.crawl_task_role)
+        # Use inline policies instead of cross-stack grant() to avoid dependency cycle
+        self.crawl_task_role.add_to_policy(iam.PolicyStatement(
+            actions=['s3:GetObject','s3:PutObject','s3:DeleteObject','s3:ListBucket'],
+            resources=[artifacts_bucket.bucket_arn, artifacts_bucket.bucket_arn+'/*'],
+        ))
+        self.crawl_task_role.add_to_policy(iam.PolicyStatement(
+            actions=['dynamodb:GetItem','dynamodb:PutItem','dynamodb:UpdateItem',
+                     'dynamodb:DeleteItem','dynamodb:Query','dynamodb:Scan'],
+            resources=[agent_state_table.table_arn],
+        ))
+        self.crawl_task_role.add_to_policy(iam.PolicyStatement(
+            actions=['secretsmanager:GetSecretValue','secretsmanager:DescribeSecret'],
+            resources=[tor_credentials.secret_arn],
+        ))
+        self.crawl_task_role.add_to_policy(iam.PolicyStatement(
+            actions=['kms:Decrypt','kms:GenerateDataKey'],
+            resources=["*"],  # KMS key - cross-stack ARN removed to avoid dep cycle
+        ))
         # X-Ray tracing
         self.crawl_task_role.add_to_policy(
             iam.PolicyStatement(
@@ -129,12 +163,17 @@ class DarkWebFraudComputeStack(Stack):
                 )
             ],
         )
-        self.crawling_ecr_repo.grant_pull(self.crawl_execution_role)
-        # Allow ECS to read the Tor password secret for container env injection
-        tor_credentials.grant_read(self.crawl_execution_role)
+        self.crawl_execution_role.add_to_policy(iam.PolicyStatement(
+            actions=['ecr:GetDownloadUrlForLayer','ecr:BatchGetImage','ecr:BatchCheckLayerAvailability'],
+            resources=[self.crawling_ecr_repo.repository_arn],
+        ))
+        self.crawl_execution_role.add_to_policy(iam.PolicyStatement(
+            actions=['secretsmanager:GetSecretValue'],
+            resources=[tor_credentials.secret_arn],
+        ))
 
         # =====================================================================
-        # CloudWatch Log Groups — one per container/function
+        # CloudWatch Log Groups - one per container/function
         # =====================================================================
         crawl_log_group = logs.LogGroup(
             self,
@@ -173,7 +212,7 @@ class DarkWebFraudComputeStack(Stack):
         )
 
         # =====================================================================
-        # Fargate Task Definition — App container + Tor sidecar
+        # Fargate Task Definition - App container + Tor sidecar
         # =====================================================================
         self.crawl_task_def = ecs.FargateTaskDefinition(
             self,
@@ -186,7 +225,7 @@ class DarkWebFraudComputeStack(Stack):
         )
 
         # --- Tor Sidecar ---
-        # Exposes SOCKS5 on 9050 and control port on 9051 (loopback only —
+        # Exposes SOCKS5 on 9050 and control port on 9051 (loopback only -
         # no port mappings needed since app container shares the task network namespace).
         # CrawlingEngine.get_proxy_url() connects to 127.0.0.1:9050 by default.
         tor_container = self.crawl_task_def.add_container(
@@ -232,7 +271,6 @@ class DarkWebFraudComputeStack(Stack):
                 "TOR_CONTROL_PORT": "9051",
                 "S3_BUCKET": artifacts_bucket.bucket_name,
                 "DYNAMODB_TABLE": agent_state_table.table_name,
-                "AWS_REGION": Stack.of(self).region,
             },
             secrets={
                 "TOR_CONTROL_PASSWORD": ecs.Secret.from_secrets_manager(tor_credentials),
@@ -253,7 +291,7 @@ class DarkWebFraudComputeStack(Stack):
 
         # --- Security Group for Crawl Tasks ---
         # Allow all egress (Tor traffic must reach the internet via NAT Gateway).
-        # No inbound rules — crawl tasks are not reachable from within the VPC.
+        # No inbound rules - crawl tasks are not reachable from within the VPC.
         self.crawl_sg = ec2.SecurityGroup(
             self,
             "CrawlTaskSG",
@@ -264,26 +302,24 @@ class DarkWebFraudComputeStack(Stack):
         )
 
         # =====================================================================
-        # Lambda Functions — 4 stateless pipeline agents
+        # Lambda Functions - 4 stateless pipeline agents
         #
         # Code packaging: Code.from_asset("src") bundles the src/ directory.
         # Add a Makefile target or CDK BundlingOptions to pip-install
         # requirements.txt into the asset before deployment.
         #
         # Handler convention: each agent module should expose a `handler(event, context)`
-        # function as the Lambda entry point — e.g.:
+        # function as the Lambda entry point - e.g.:
         #   dark_web_fraud_agent/agents/content_analyst.py  → def handler(event, ctx): ...
         # =====================================================================
 
         common_lambda_kwargs = dict(
             runtime=lambda_.Runtime.PYTHON_3_12,
             code=lambda_.Code.from_asset("src"),
-            vpc=vpc,
-            # Isolated subnet — reaches AWS services only via VPC Interface Endpoints,
-            # never traverses the internet
-            vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
-            ),
+            # VPC placement removed to avoid cross-stack dependency cycle.
+            # Lambda functions reach AWS services (Bedrock, S3, DynamoDB, OpenSearch)
+            # via public HTTPS endpoints with IAM auth. Add VPC placement back
+            # once stacks are refactored into a single stack or use Fn.importValue.
             tracing=lambda_.Tracing.ACTIVE,
         )
 
@@ -293,11 +329,11 @@ class DarkWebFraudComputeStack(Stack):
             "AnalystRole",
             assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
             role_name="dark-web-fraud-content-analyst-role",
-            description="Content Analyst Lambda — Bedrock + S3 read only",
+            description="Content Analyst Lambda - Bedrock + S3 read only",
         )
         analyst_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name(
-                "service-role/AWSLambdaVPCAccessExecutionRole"
+                "service-role/AWSLambdaBasicExecutionRole"
             )
         )
         analyst_role.add_to_policy(
@@ -323,8 +359,14 @@ class DarkWebFraudComputeStack(Stack):
                 resources=["*"],
             )
         )
-        artifacts_bucket.grant_read(analyst_role)
-        kms_key.grant_decrypt(analyst_role)
+        analyst_role.add_to_policy(iam.PolicyStatement(
+            actions=['s3:GetObject','s3:ListBucket'],
+            resources=[artifacts_bucket.bucket_arn, artifacts_bucket.bucket_arn+'/*'],
+        ))
+        analyst_role.add_to_policy(iam.PolicyStatement(
+            actions=['kms:Decrypt'],
+            resources=["*"],  # KMS key - cross-stack ARN removed to avoid dep cycle
+        ))
 
         self.content_analyst_fn = lambda_.Function(
             self,
@@ -338,7 +380,6 @@ class DarkWebFraudComputeStack(Stack):
             environment={
                 "S3_BUCKET": artifacts_bucket.bucket_name,
                 "BEDROCK_MODEL_ID": "anthropic.claude-opus-4-5",
-                "AWS_REGION": Stack.of(self).region,
             },
             **common_lambda_kwargs,
         )
@@ -349,11 +390,11 @@ class DarkWebFraudComputeStack(Stack):
             "StructurerRole",
             assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
             role_name="dark-web-fraud-data-structurer-role",
-            description="Data Structurer Lambda — Bedrock embeddings + OpenSearch writes",
+            description="Data Structurer Lambda - Bedrock embeddings + OpenSearch writes",
         )
         structurer_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name(
-                "service-role/AWSLambdaVPCAccessExecutionRole"
+                "service-role/AWSLambdaBasicExecutionRole"
             )
         )
         structurer_role.add_to_policy(
@@ -377,9 +418,18 @@ class DarkWebFraudComputeStack(Stack):
                 resources=["*"],
             )
         )
-        artifacts_bucket.grant_read_write(structurer_role)
-        misp_api_key.grant_read(structurer_role)
-        kms_key.grant_encrypt_decrypt(structurer_role)
+        structurer_role.add_to_policy(iam.PolicyStatement(
+            actions=['s3:GetObject','s3:PutObject','s3:ListBucket'],
+            resources=[artifacts_bucket.bucket_arn, artifacts_bucket.bucket_arn+'/*'],
+        ))
+        structurer_role.add_to_policy(iam.PolicyStatement(
+            actions=['secretsmanager:GetSecretValue'],
+            resources=[misp_api_key.secret_arn],
+        ))
+        structurer_role.add_to_policy(iam.PolicyStatement(
+            actions=['kms:Decrypt','kms:GenerateDataKey'],
+            resources=["*"],  # KMS key - cross-stack ARN removed to avoid dep cycle
+        ))
 
         self.data_structurer_fn = lambda_.Function(
             self,
@@ -394,7 +444,6 @@ class DarkWebFraudComputeStack(Stack):
                 "S3_BUCKET": artifacts_bucket.bucket_name,
                 "OPENSEARCH_ENDPOINT": opensearch_endpoint,
                 "BEDROCK_EMBEDDING_MODEL_ID": "amazon.titan-embed-text-v2:0",
-                "AWS_REGION": Stack.of(self).region,
             },
             **common_lambda_kwargs,
         )
@@ -405,11 +454,11 @@ class DarkWebFraudComputeStack(Stack):
             "TaggingRole",
             assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
             role_name="dark-web-fraud-tagging-engine-role",
-            description="Tagging Engine Lambda — AgentCore KB reads + MISP writes",
+            description="Tagging Engine Lambda - AgentCore KB reads + MISP writes",
         )
         tagging_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name(
-                "service-role/AWSLambdaVPCAccessExecutionRole"
+                "service-role/AWSLambdaBasicExecutionRole"
             )
         )
         tagging_role.add_to_policy(
@@ -426,9 +475,18 @@ class DarkWebFraudComputeStack(Stack):
                 resources=["*"],
             )
         )
-        artifacts_bucket.grant_read_write(tagging_role)
-        misp_api_key.grant_read(tagging_role)
-        kms_key.grant_encrypt_decrypt(tagging_role)
+        tagging_role.add_to_policy(iam.PolicyStatement(
+            actions=['s3:GetObject','s3:PutObject','s3:ListBucket'],
+            resources=[artifacts_bucket.bucket_arn, artifacts_bucket.bucket_arn+'/*'],
+        ))
+        tagging_role.add_to_policy(iam.PolicyStatement(
+            actions=['secretsmanager:GetSecretValue'],
+            resources=[misp_api_key.secret_arn],
+        ))
+        tagging_role.add_to_policy(iam.PolicyStatement(
+            actions=['kms:Decrypt','kms:GenerateDataKey'],
+            resources=["*"],  # KMS key - cross-stack ARN removed to avoid dep cycle
+        ))
 
         self.tagging_engine_fn = lambda_.Function(
             self,
@@ -441,22 +499,33 @@ class DarkWebFraudComputeStack(Stack):
             log_group=tagging_log_group,
             environment={
                 "S3_BUCKET": artifacts_bucket.bucket_name,
-                "AWS_REGION": Stack.of(self).region,
             },
             **common_lambda_kwargs,
         )
 
-        # ---- Alert Generator -----------------------------------------------
+
+        # =====================================================================
+        # SNS Alert Topic - lives here so AlertGenerator Lambda can reference
+        # it without creating cross-stack PipelineStack↔ComputeStack cycles.
+        # PipelineStack will import it via sns.Topic.from_topic_arn().
+        # =====================================================================
+        self.alert_topic = sns.Topic(
+            self,
+            "AlertTopic",
+            display_name="Dark Web Fraud Intelligence Alerts",
+        )
+
+                # ---- Alert Generator -----------------------------------------------
         alert_role = iam.Role(
             self,
             "AlertRole",
             assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
             role_name="dark-web-fraud-alert-generator-role",
-            description="Alert Generator Lambda — OpenSearch reads + SNS publish + DynamoDB convergence",
+            description="Alert Generator Lambda - OpenSearch reads + SNS publish + DynamoDB convergence",
         )
         alert_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name(
-                "service-role/AWSLambdaVPCAccessExecutionRole"
+                "service-role/AWSLambdaBasicExecutionRole"
             )
         )
         alert_role.add_to_policy(
@@ -481,9 +550,21 @@ class DarkWebFraudComputeStack(Stack):
                 resources=["*"],
             )
         )
-        convergence_table.grant_read_write_data(alert_role)
-        artifacts_bucket.grant_read_write(alert_role)
-        kms_key.grant_encrypt_decrypt(alert_role)
+        alert_role.add_to_policy(iam.PolicyStatement(
+            actions=['dynamodb:GetItem','dynamodb:PutItem','dynamodb:UpdateItem',
+                     'dynamodb:DeleteItem','dynamodb:Query','dynamodb:Scan',
+                     'dynamodb:DescribeStream','dynamodb:GetRecords','dynamodb:GetShardIterator',
+                     'dynamodb:ListStreams'],
+            resources=[convergence_table.table_arn, convergence_table.table_arn+'/stream/*'],
+        ))
+        alert_role.add_to_policy(iam.PolicyStatement(
+            actions=['s3:GetObject','s3:PutObject','s3:ListBucket'],
+            resources=[artifacts_bucket.bucket_arn, artifacts_bucket.bucket_arn+'/*'],
+        ))
+        alert_role.add_to_policy(iam.PolicyStatement(
+            actions=['kms:Decrypt','kms:GenerateDataKey'],
+            resources=["*"],  # KMS key - cross-stack ARN removed to avoid dep cycle
+        ))
 
         self.alert_generator_fn = lambda_.Function(
             self,
@@ -498,13 +579,35 @@ class DarkWebFraudComputeStack(Stack):
                 "S3_BUCKET": artifacts_bucket.bucket_name,
                 "DYNAMODB_CONVERGENCE_TABLE": convergence_table.table_name,
                 "OPENSEARCH_ENDPOINT": opensearch_endpoint,
-                "AWS_REGION": Stack.of(self).region,
-                # SNS_TOPIC_ARN injected by PipelineStack after topic is created
+                "SNS_TOPIC_ARN": self.alert_topic.topic_arn,
+                "HIGH_SEVERITY_THRESHOLD": "7",
             },
             **common_lambda_kwargs,
         )
 
-        # --- Reactive DynamoDB Streams trigger for Alert Generator ---
+        self.alert_topic.grant_publish(self.alert_generator_fn)
+
+
+        # Export SNS topic ARN via SSM so PipelineStack can import it without
+        # a CDK construct reference (which would create a dependency cycle).
+        ssm.StringParameter(
+            self, "ClusterArnParam",
+            parameter_name="/dark-web-fraud/cluster-arn",
+            string_value=self.cluster.cluster_arn,
+        )
+        ssm.StringParameter(
+            self, "CrawlTaskDefArnParam",
+            parameter_name="/dark-web-fraud/crawl-task-def-arn",
+            string_value=self.crawl_task_def.task_definition_arn,
+        )
+        ssm.StringParameter(
+            self,
+            "AlertTopicArnParam",
+            parameter_name="/dark-web-fraud/alert-topic-arn",
+            string_value=self.alert_topic.topic_arn,
+        )
+
+                # --- Reactive DynamoDB Streams trigger for Alert Generator ---
         # ConvergenceTable has Streams enabled (NEW_AND_OLD_IMAGES) in CoreStack.
         # When new convergence records are written, trigger alert evaluation immediately
         # rather than waiting for the next Step Functions execution cycle.
@@ -516,7 +619,7 @@ class DarkWebFraudComputeStack(Stack):
                 bisect_batch_on_error=True,  # Halve batch on error to isolate bad record
                 retry_attempts=2,
                 filters=[
-                    # Only trigger on INSERT events — convergence records are write-once
+                    # Only trigger on INSERT events - convergence records are write-once
                     lambda_.FilterCriteria.filter(
                         {"eventName": lambda_.FilterRule.is_equal("INSERT")}
                     )
@@ -524,7 +627,22 @@ class DarkWebFraudComputeStack(Stack):
             )
         )
 
-        # =====================================================================
+
+        # SSM exports for Lambda ARNs so PipelineStack can import without cycle
+        for fn_name, fn in [
+            ("content-analyst",  self.content_analyst_fn),
+            ("data-structurer",  self.data_structurer_fn),
+            ("tagging-engine",   self.tagging_engine_fn),
+            ("alert-generator",  self.alert_generator_fn),
+        ]:
+            ssm.StringParameter(
+                self,
+                f"LambdaArn{fn_name.replace('-', '')}",
+                parameter_name=f"/dark-web-fraud/lambda/{fn_name}-arn",
+                string_value=fn.function_arn,
+            )
+
+                # =====================================================================
         # Stack Outputs
         # =====================================================================
         CfnOutput(self, "ClusterArn", value=self.cluster.cluster_arn)

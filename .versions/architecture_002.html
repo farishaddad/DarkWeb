@@ -306,19 +306,19 @@
       <path d="M 1380 610 L 1100 642" fill="none" stroke="#f85149" stroke-width="1" marker-end="url(#arrow-red)" stroke-dasharray="3,2"/>
 
       <!-- ============ LEGEND ============ -->
-      <rect x="900" y="720" width="520" height="165" rx="8" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
-      <text x="920" y="745" font-size="12" fill="#f0f6fc" font-weight="600">LEGEND</text>
+      <rect x="1140" y="22" width="520" height="130" rx="8" fill="#0d1117" stroke="#30363d" stroke-width="1" opacity="0.92"/>
+      <text x="1160" y="47" font-size="12" fill="#f0f6fc" font-weight="600">LEGEND</text>
 
       <!-- Compute -->
-      <rect x="920" y="760" width="16" height="16" rx="3" fill="none" stroke="#f0883e" stroke-width="2"/>
+      <rect x="1160" y="62" width="16" height="16" rx="3" fill="none" stroke="#f0883e" stroke-width="2"/>
       <text x="945" y="773" font-size="10" fill="#c9d1d9">Compute / Orchestration (orange)</text>
 
       <!-- Storage -->
-      <rect x="920" y="785" width="16" height="16" rx="3" fill="none" stroke="#a371f7" stroke-width="2"/>
+      <rect x="1160" y="87" width="16" height="16" rx="3" fill="none" stroke="#a371f7" stroke-width="2"/>
       <text x="945" y="798" font-size="10" fill="#c9d1d9">Storage / Database (purple)</text>
 
       <!-- Networking -->
-      <rect x="920" y="810" width="16" height="16" rx="3" fill="none" stroke="#1f6feb" stroke-width="2"/>
+      <rect x="1160" y="112" width="16" height="16" rx="3" fill="none" stroke="#1f6feb" stroke-width="2"/>
       <text x="945" y="823" font-size="10" fill="#c9d1d9">Networking / VPC (blue)</text>
 
       <!-- ML/AI -->
@@ -330,20 +330,20 @@
       <text x="945" y="873" font-size="10" fill="#c9d1d9">Security / Encryption (red)</text>
 
       <!-- External -->
-      <rect x="1200" y="760" width="16" height="16" rx="3" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <rect x="1440" y="62" width="16" height="16" rx="3" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="3,2"/>
       <text x="1225" y="773" font-size="10" fill="#c9d1d9">External System (dashed grey)</text>
 
       <!-- Data flow -->
-      <line x1="1200" y1="793" x2="1216" y2="793" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrow)"/>
-      <text x="1225" y="798" font-size="10" fill="#c9d1d9">Data flow direction</text>
+      <line x1="1440" y1="95" x2="1456" y2="95" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="1465" y="100" font-size="10" fill="#c9d1d9">Data flow direction</text>
 
       <!-- VPC boundary -->
-      <line x1="1200" y1="818" x2="1216" y2="818" stroke="#1f6feb" stroke-width="1.5" stroke-dasharray="6,3"/>
-      <text x="1225" y="823" font-size="10" fill="#c9d1d9">VPC / Subnet boundary</text>
+      <line x1="1440" y1="120" x2="1456" y2="120" stroke="#1f6feb" stroke-width="1.5" stroke-dasharray="6,3"/>
+      <text x="1465" y="125" font-size="10" fill="#c9d1d9">VPC / Subnet boundary</text>
 
       <!-- Async / indirect -->
-      <line x1="1200" y1="843" x2="1216" y2="843" stroke="#f85149" stroke-width="1.5" stroke-dasharray="4,2"/>
-      <text x="1225" y="848" font-size="10" fill="#c9d1d9">Async / indirect path</text>
+      <line x1="1440" y1="145" x2="1456" y2="145" stroke="#f85149" stroke-width="1.5" stroke-dasharray="4,2"/>
+      <text x="1465" y="150" font-size="10" fill="#c9d1d9">Async / indirect path</text>
 
       <!-- ============ ADDITIONAL ANNOTATIONS ============ -->
       <!-- KMS encrypts storage -->
@@ -363,154 +363,5 @@
     </svg>
   </div>
 </div>
-
-<!-- ============ NARRATIVE WALKTHROUGH ============ -->
-<div style="max-width:1700px; margin: 32px auto 48px; padding: 0 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #c9d1d9;">
-
-  <h2 style="font-size:20px; font-weight:700; color:#f0f6fc; margin:0 0 6px;">
-    How It Works — Architecture Walkthrough
-  </h2>
-  <p style="font-size:13px; color:#8b949e; margin:0 0 32px;">
-    A step-by-step guide to the pipeline, the AWS services that power it, and how they connect.
-  </p>
-
-  <!-- STEP 1 -->
-  <div style="display:flex; gap:20px; margin-bottom:28px; align-items:flex-start;">
-    <div style="flex-shrink:0; width:36px; height:36px; background:#1f6feb; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; color:#fff; margin-top:2px;">1</div>
-    <div>
-      <h3 style="font-size:15px; font-weight:700; color:#f0f6fc; margin:0 0 6px;">
-        Scheduling &amp; Orchestration — <span style="color:#58a6ff;">EventBridge Scheduler + Step Functions Express</span>
-      </h3>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0 0 8px;">
-        Every 5 minutes, <strong style="color:#f0f6fc;">Amazon EventBridge Scheduler</strong> fires a trigger that kicks off the intelligence pipeline. Rather than running a single monolithic process, the work is broken into discrete, auditable stages managed by <strong style="color:#f0f6fc;">AWS Step Functions</strong> — specifically an <em>Express Workflow</em>, chosen because it handles high-frequency, short-duration executions at a fraction of the cost of Standard Workflows.
-      </p>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0;">
-        Step Functions passes a JSON payload — containing the S3 artifact key and execution ID — through each pipeline stage in sequence, handling retries, timeouts, and failure routing automatically. If a stage fails, the execution history is stored in <strong style="color:#f0f6fc;">CloudWatch Logs</strong> for debugging.
-      </p>
-    </div>
-  </div>
-
-  <!-- STEP 2 -->
-  <div style="display:flex; gap:20px; margin-bottom:28px; align-items:flex-start;">
-    <div style="flex-shrink:0; width:36px; height:36px; background:#f0883e; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; color:#fff; margin-top:2px;">2</div>
-    <div>
-      <h3 style="font-size:15px; font-weight:700; color:#f0f6fc; margin:0 0 6px;">
-        Dark Web Crawling — <span style="color:#58a6ff;">ECS Fargate + Tor Sidecar + NAT Gateway → S3</span>
-      </h3>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0 0 8px;">
-        Step Functions launches a <strong style="color:#f0f6fc;">Fargate</strong> task inside a private VPC subnet. The task runs two containers side-by-side: the <em>Crawling Engine</em> (Python) and a <em>Tor sidecar</em>. The Python app connects through the sidecar's SOCKS5 proxy on <code style="background:#161b22; padding:1px 5px; border-radius:3px; font-size:12px;">127.0.0.1:9050</code>, which routes all HTTP traffic through the Tor network to reach <code style="background:#161b22; padding:1px 5px; border-radius:3px; font-size:12px;">.onion</code> dark web forums and marketplaces.
-      </p>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0 0 8px;">
-        Fargate is used instead of Lambda because the crawling engine maintains a <em>persistent, stateful connection</em> to the Tor control port for circuit rotation — Lambda's 15-minute limit and stateless cold-start model are incompatible with this.
-      </p>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0;">
-        Raw HTML content is stripped to plain text, hashed with SHA-256 for deduplication, and uploaded to <strong style="color:#f0f6fc;">Amazon S3</strong> alongside a metadata sidecar. A <em>circuit breaker pattern</em> backed by <strong style="color:#f0f6fc;">DynamoDB</strong> tracks per-source failure counts — if a source fails 5 consecutive times, it's temporarily blocked to prevent hammering unreachable servers. Credentials for the Tor control port are retrieved at runtime from <strong style="color:#f0f6fc;">AWS Secrets Manager</strong>.
-      </p>
-    </div>
-  </div>
-
-  <!-- STEP 3 -->
-  <div style="display:flex; gap:20px; margin-bottom:28px; align-items:flex-start;">
-    <div style="flex-shrink:0; width:36px; height:36px; background:#bc8cff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; color:#fff; margin-top:2px;">3</div>
-    <div>
-      <h3 style="font-size:15px; font-weight:700; color:#f0f6fc; margin:0 0 6px;">
-        Intelligence Analysis — <span style="color:#58a6ff;">Lambda + Amazon Bedrock (Claude Opus 4) + Guardrails</span>
-      </h3>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0 0 8px;">
-        Step Functions passes the S3 artifact key to the <strong style="color:#f0f6fc;">Content Analyst Lambda</strong>. In a single <strong style="color:#f0f6fc;">Amazon Bedrock</strong> API call — using Claude Opus 4 — the function simultaneously determines: (1) whether the content is fraud-relevant, (2) what entities are present (BINs, SWIFT codes, Bitcoin wallets, IPs, email addresses), and (3) which fraud technique category applies (<em>MFA bypass, phishing kit, account takeover, CNP fraud, synthetic identity</em>). Combining three analyses into one call reduces Bedrock costs by ~3× compared to sequential calls.
-      </p>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0;">
-        <strong style="color:#f0f6fc;">Bedrock Guardrails</strong> screen every input for prompt injection and harmful content before Claude processes it. If Guardrails intervene, the content is flagged as non-relevant and quarantined — the pipeline continues without exposing the model to potentially adversarial dark web text.
-      </p>
-    </div>
-  </div>
-
-  <!-- STEP 4 -->
-  <div style="display:flex; gap:20px; margin-bottom:28px; align-items:flex-start;">
-    <div style="flex-shrink:0; width:36px; height:36px; background:#3fb950; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; color:#fff; margin-top:2px;">4</div>
-    <div>
-      <h3 style="font-size:15px; font-weight:700; color:#f0f6fc; margin:0 0 6px;">
-        Intelligence Structuring — <span style="color:#58a6ff;">Lambda + STIX 2.1 + Bedrock Titan Embeddings + OpenSearch Serverless</span>
-      </h3>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0 0 8px;">
-        The <strong style="color:#f0f6fc;">Data Structurer Lambda</strong> converts raw extracted entities into a <strong style="color:#f0f6fc;">STIX 2.1 Bundle</strong> — the international standard for threat intelligence. Entities are mapped to the correct STIX types: IP addresses become <em>IPv4Address SCOs</em>, institutions become <em>Identity SDOs</em> (victim organisations, not threat actors), attack patterns become <em>AttackPattern SDOs</em>, and all objects are linked via typed <em>Relationship SROs</em>.
-      </p>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0 0 8px;">
-        Each STIX object is summarised into text, embedded using <strong style="color:#f0f6fc;">Bedrock Titan Embed</strong>, and indexed into an <strong style="color:#f0f6fc;">OpenSearch Serverless VECTORSEARCH</strong> collection. This enables future semantic similarity queries — "find all threat intelligence similar to this Bitcoin wallet pattern" — without full-text search limitations.
-      </p>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0;">
-        The serialised STIX bundle JSON is also written back to S3 for the downstream agents and for the <strong style="color:#f0f6fc;">Bedrock AgentCore Managed Knowledge Base</strong>, which enables RAG retrieval over historical threat intelligence in future agentic workflows.
-      </p>
-    </div>
-  </div>
-
-  <!-- STEP 5 -->
-  <div style="display:flex; gap:20px; margin-bottom:28px; align-items:flex-start;">
-    <div style="flex-shrink:0; width:36px; height:36px; background:#e3b341; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; color:#fff; margin-top:2px;">5</div>
-    <div>
-      <h3 style="font-size:15px; font-weight:700; color:#f0f6fc; margin:0 0 6px;">
-        Automated Tagging — <span style="color:#58a6ff;">Lambda + MITRE ATT&amp;CK + MISP</span>
-      </h3>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0 0 8px;">
-        The <strong style="color:#f0f6fc;">Tagging Engine Lambda</strong> applies machine-readable classification tags from three taxonomies: <strong style="color:#f0f6fc;">MITRE ATT&amp;CK</strong> technique IDs (e.g. T1111 for MFA interception, T1566.001 for spearphishing attachments), a custom banking fraud taxonomy (<code style="background:#161b22; padding:1px 5px; border-radius:3px; font-size:12px;">fraud:type="cnp-fraud"</code>), and severity level tags (low / medium / high / critical).
-      </p>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0;">
-        Items that don't match any taxonomy predicate are automatically tagged <code style="background:#161b22; padding:1px 5px; border-radius:3px; font-size:12px;">review:status="requires-review"</code> for analyst triage. A tag manifest JSON is written to S3 alongside the STIX bundle. The Tagging Engine also pushes the STIX bundle to an external <strong style="color:#f0f6fc;">MISP</strong> instance — the open-source threat intelligence sharing platform — enriching it with MISP Galaxy cluster links to known threat actor profiles.
-      </p>
-    </div>
-  </div>
-
-  <!-- STEP 6 -->
-  <div style="display:flex; gap:20px; margin-bottom:28px; align-items:flex-start;">
-    <div style="flex-shrink:0; width:36px; height:36px; background:#f85149; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; color:#fff; margin-top:2px;">6</div>
-    <div>
-      <h3 style="font-size:15px; font-weight:700; color:#f0f6fc; margin:0 0 6px;">
-        Alert Generation &amp; Campaign Convergence — <span style="color:#58a6ff;">Lambda + DynamoDB + SNS → SQS → SIEM</span>
-      </h3>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0 0 8px;">
-        The <strong style="color:#f0f6fc;">Alert Generator Lambda</strong> runs a <em>campaign convergence</em> check: if 3 or more intelligence items reference the same TTP within a 24-hour window, they are combined into a consolidated campaign alert. This threshold logic is backed by <strong style="color:#f0f6fc;">DynamoDB</strong> — each item is written with a TTL equal to the convergence window, so old items expire automatically without manual cleanup.
-      </p>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0 0 8px;">
-        The Lambda is invoked both from Step Functions (scheduled path) and reactively from a <strong style="color:#f0f6fc;">DynamoDB Streams</strong> event source — meaning convergence is evaluated the moment a new item lands, not just on the next 5-minute cycle. High-severity items (score ≥ 7/10) trigger an immediate alert regardless of convergence count.
-      </p>
-      <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0;">
-        Alerts are published to an <strong style="color:#f0f6fc;">Amazon SNS</strong> topic and delivered to a <strong style="color:#f0f6fc;">FIFO SQS</strong> queue for ordered delivery to downstream SIEM/SOAR systems. FIFO guarantees that multiple alerts about the same TTP are processed in the correct sequence — critical for accurate threat timelines. A Dead Letter Queue (DLQ) captures any failed deliveries for forensic review.
-      </p>
-    </div>
-  </div>
-
-  <!-- SECURITY SIDEBAR -->
-  <div style="background:#161b22; border:1px solid #30363d; border-left:4px solid #f85149; border-radius:8px; padding:20px 24px; margin-bottom:28px;">
-    <h3 style="font-size:14px; font-weight:700; color:#f85149; margin:0 0 10px; text-transform:uppercase; letter-spacing:0.06em;">🔐 Security Architecture</h3>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; font-size:13px; line-height:1.6; color:#c9d1d9;">
-      <div>
-        <strong style="color:#f0f6fc;">KMS Customer Managed Key</strong><br>
-        Every data store — S3, DynamoDB, Secrets Manager — is encrypted with a single CMK. Every decrypt call is logged to CloudTrail, creating a full audit trail of who accessed what intelligence and when.
-      </div>
-      <div>
-        <strong style="color:#f0f6fc;">Per-Agent IAM Roles</strong><br>
-        Each Lambda function has its own IAM role with least-privilege permissions. The Content Analyst can call Bedrock and read S3, but cannot write to DynamoDB. The Alert Generator can publish to SNS but cannot call Bedrock.
-      </div>
-      <div>
-        <strong style="color:#f0f6fc;">VPC Isolation</strong><br>
-        The Fargate crawling task runs in a private subnet. All Tor traffic egresses via a NAT Gateway to an Elastic IP — dark web traffic never flows from the Lambda analysis layer, which is completely separate.
-      </div>
-      <div>
-        <strong style="color:#f0f6fc;">GuardDuty + Security Hub</strong><br>
-        GuardDuty monitors for anomalous API calls and data exfiltration patterns. Security Hub aggregates findings from GuardDuty and Inspector (container vulnerability scans on the Fargate image) into a single SOC view.
-      </div>
-    </div>
-  </div>
-
-  <!-- OBSERVABILITY -->
-  <div style="background:#161b22; border:1px solid #30363d; border-left:4px solid #58a6ff; border-radius:8px; padding:20px 24px;">
-    <h3 style="font-size:14px; font-weight:700; color:#58a6ff; margin:0 0 10px; text-transform:uppercase; letter-spacing:0.06em;">📊 Observability</h3>
-    <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0;">
-      Every Lambda handler emits <strong style="color:#f0f6fc;">CloudWatch Embedded Metric Format (EMF)</strong> logs — JSON written to stdout that the Lambda runtime automatically converts to CloudWatch custom metrics. This gives the SOC dashboard real-time metrics on items processed per cycle, Bedrock token consumption, error rates per agent, and alert convergence events — with zero additional API calls. <strong style="color:#f0f6fc;">AWS X-Ray</strong> traces every Step Functions execution end-to-end, pinpointing latency across the Bedrock, S3, DynamoDB, and OpenSearch hops. Pipeline failure alarms (>3 failures / 5-min window) and DLQ depth alarms (>10 messages) route to the SNS ops topic, which can be subscribed by the SOC team's email or PagerDuty integration.
-    </p>
-  </div>
-
-</div>
-
 </body>
 </html>

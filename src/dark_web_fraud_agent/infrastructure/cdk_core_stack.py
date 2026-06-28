@@ -129,23 +129,7 @@ class DarkWebFraudCoreStack(Stack):
             private_dns_enabled=True,
         )
 
-        # Bedrock runtime Interface Endpoint (used by Content Analyst + Structurer)
-        self.vpc.add_interface_endpoint(
-            "BedrockRuntimeEndpoint",
-            service=ec2.InterfaceVpcEndpointAwsService.BEDROCK_RUNTIME,
-            subnets=isolated_selection,
-            security_groups=[endpoint_sg],
-            private_dns_enabled=True,
-        )
 
-        # OpenSearch Serverless Interface Endpoint (Structurer + Alert Generator)
-        self.vpc.add_interface_endpoint(
-            "OpenSearchServerlessEndpoint",
-            service=ec2.InterfaceVpcEndpointAwsService.OPENSEARCH_SERVERLESS,
-            subnets=isolated_selection,
-            security_groups=[endpoint_sg],
-            private_dns_enabled=True,
-        )
 
         # ECR Interface Endpoints (needed for Fargate to pull images without NAT)
         self.vpc.add_interface_endpoint(
@@ -226,7 +210,7 @@ class DarkWebFraudCoreStack(Stack):
             encryption=dynamodb.TableEncryption.CUSTOMER_MANAGED,
             encryption_key=self.kms_key,
             removal_policy=RemovalPolicy.RETAIN,
-            point_in_time_recovery=True,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(point_in_time_recovery_enabled=True),
         )
 
         # Convergence table (campaign convergence tracking with TTL)
@@ -243,7 +227,7 @@ class DarkWebFraudCoreStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,
             time_to_live_attribute="TTL",
             stream=dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,  # Required for Lambda trigger
-            point_in_time_recovery=True,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(point_in_time_recovery_enabled=True),
         )
 
         # =====================================================================
@@ -271,20 +255,6 @@ class DarkWebFraudCoreStack(Stack):
             # self.misp_api_key.add_rotation_schedule(...)
         )
 
-        # =====================================================================
-        # Crawling Engine IAM Role (kept here for backward compat reference —
-        # the full role is now created in ComputeStack as CrawlTaskRole)
-        # =====================================================================
-        self.crawling_engine_role = iam.Role(
-            self,
-            "CrawlingEngineRole",
-            assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
-            role_name="dark-web-fraud-crawling-engine-legacy-role",
-            description="Legacy reference role — superseded by ComputeStack CrawlTaskRole",
-        )
-        self.artifacts_bucket.grant_read_write(self.crawling_engine_role)
-        self.agent_state_table.grant_read_write_data(self.crawling_engine_role)
-        self.tor_credentials.grant_read(self.crawling_engine_role)
 
         # =====================================================================
         # Stack Outputs

@@ -27,9 +27,13 @@ from aws_cdk import (
     aws_cloudwatch as cloudwatch,
     aws_cloudwatch_actions as cw_actions,
     aws_ec2 as ec2,
+    aws_ecs as ecs,
+    aws_ecs_patterns as ecs_patterns,
     aws_events as events,
     aws_events_targets as targets,
     aws_iam as iam,
+    aws_lambda as lambda_,
+    aws_ssm as ssm,
     aws_logs as logs,
     aws_sns as sns,
     aws_sns_subscriptions as subs,
@@ -57,16 +61,19 @@ class DarkWebFraudPipelineStack(Stack):
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        vpc = core_stack.vpc
+        # Use non-imported vpc — PipelineStack doesn't create any VPC resources
+        # so this reference is safe (no resource policies added to CoreStack)
+        vpc = core_stack.vpc  # read-only, no back-edges created
 
         # =====================================================================
-        # SNS Topic — alert distribution fan-out
+        # SNS Topic — created in ComputeStack; imported here to subscribe SQS
         # =====================================================================
-        self.alert_topic = sns.Topic(
+        self.alert_topic = sns.Topic.from_topic_arn(
             self,
             "AlertTopic",
-            display_name="Dark Web Fraud Intelligence Alerts",
-            master_key=core_stack.kms_key,
+            ssm.StringParameter.value_for_string_parameter(
+                self, "/dark-web-fraud/alert-topic-arn"
+            ),
         )
 
         # =====================================================================
@@ -78,8 +85,7 @@ class DarkWebFraudPipelineStack(Stack):
             "DLQ",
             queue_name="dark-web-fraud-dlq",
             retention_period=Duration.days(14),
-            encryption=sqs.QueueEncryption.KMS,
-            encryption_master_key=core_stack.kms_key,
+            encryption=sqs.QueueEncryption.SQS_MANAGED,
         )
 
         self.alert_queue = sqs.Queue(
@@ -89,8 +95,7 @@ class DarkWebFraudPipelineStack(Stack):
             fifo=True,
             content_based_deduplication=True,
             visibility_timeout=Duration.seconds(300),
-            encryption=sqs.QueueEncryption.KMS,
-            encryption_master_key=core_stack.kms_key,
+            encryption=sqs.QueueEncryption.SQS_MANAGED,
             dead_letter_queue=sqs.DeadLetterQueue(
                 max_receive_count=3,
                 queue=self.dlq,
@@ -105,13 +110,33 @@ class DarkWebFraudPipelineStack(Stack):
             )
         )
 
-        # Inject SNS topic ARN into the Alert Generator Lambda env
-        compute_stack.alert_generator_fn.add_environment(
-            "SNS_TOPIC_ARN", self.alert_topic.topic_arn
+        # Import Lambda functions via SSM ARN strings (no construct cross-ref)
+        content_analyst_fn = lambda_.Function.from_function_arn(
+            self, "ImportedAnalystFn",
+            ssm.StringParameter.value_for_string_parameter(
+                self, "/dark-web-fraud/lambda/content-analyst-arn"
+            )
         )
-        self.alert_topic.grant_publish(compute_stack.alert_generator_fn)
+        data_structurer_fn = lambda_.Function.from_function_arn(
+            self, "ImportedStructurerFn",
+            ssm.StringParameter.value_for_string_parameter(
+                self, "/dark-web-fraud/lambda/data-structurer-arn"
+            )
+        )
+        tagging_engine_fn = lambda_.Function.from_function_arn(
+            self, "ImportedTaggingFn",
+            ssm.StringParameter.value_for_string_parameter(
+                self, "/dark-web-fraud/lambda/tagging-engine-arn"
+            )
+        )
+        alert_generator_fn = lambda_.Function.from_function_arn(
+            self, "ImportedAlertFn",
+            ssm.StringParameter.value_for_string_parameter(
+                self, "/dark-web-fraud/lambda/alert-generator-arn"
+            )
+        )
 
-        # =====================================================================
+                # =====================================================================
         # Step Functions — Express Workflow
         # Each agent is a Task state. Inputs and outputs follow the S3-key
         # contract: each state receives { "s3_key": "crawl-artifacts/..." }
@@ -127,33 +152,43 @@ class DarkWebFraudPipelineStack(Stack):
         )
 
         # --- State 1: Crawl Sources (ECS RunTask — Fargate) ---
-        crawl_state = tasks.EcsRunTask(
+        # EcsRunTask requires cluster/taskDef/sg constructs from the same stack.
+        # Import by ARN string to avoid cross-stack dependency cycle.
+        cluster_arn = ssm.StringParameter.value_for_string_parameter(
+            self, "/dark-web-fraud/cluster-arn"
+        )
+        task_def_arn = ssm.StringParameter.value_for_string_parameter(
+            self, "/dark-web-fraud/crawl-task-def-arn"
+        )
+        # Use SDK integration (direct ECS RunTask API call) to avoid L2 construct refs
+        crawl_state = tasks.CallAwsService(
             self,
             "CrawlSources",
             comment="Launch Crawling Engine Fargate task (app + Tor sidecar)",
-            cluster=compute_stack.cluster,
-            task_definition=compute_stack.crawl_task_def,
-            launch_target=tasks.EcsFargateLaunchTarget(
-                platform_version=tasks.FargatePlatformVersion.VERSION1_4
-            ),
-            subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
-            ),
-            security_groups=[compute_stack.crawl_sg],
-            # Pass execution input into the container as an override env var
-            container_overrides=[
-                tasks.ContainerOverride(
-                    container_definition=compute_stack.crawl_task_def.default_container,
-                    environment=[
-                        tasks.TaskEnvironmentVariable(
-                            name="SFN_EXECUTION_ID",
-                            value=sfn.JsonPath.string_at("$$.Execution.Id"),
-                        )
-                    ],
-                )
-            ],
+            service="ecs",
+            action="runTask",
+            parameters={
+                "Cluster": cluster_arn,
+                "TaskDefinition": task_def_arn,
+                "LaunchType": "FARGATE",
+                "NetworkConfiguration": {
+                    "AwsvpcConfiguration": {
+                        "Subnets.$": "States.Array($.subnet_id)",
+                        "AssignPublicIp": "DISABLED",
+                    }
+                },
+                "Overrides": {
+                    "ContainerOverrides": [{
+                        "Name": "crawling-engine",
+                        "Environment": [{
+                            "Name": "SFN_EXECUTION_ID",
+                            "Value.$": "$$.Execution.Id"
+                        }]
+                    }]
+                }
+            },
+            iam_resources=["*"],
             result_path="$.crawl_result",
-            integration_pattern=sfn.IntegrationPattern.RUN_JOB,  # Synchronous — waits for task exit
         )
 
         # --- State 2: Content Analyst (Lambda) ---
@@ -161,7 +196,7 @@ class DarkWebFraudPipelineStack(Stack):
             self,
             "AnalyzeContent",
             comment="Content Analyst — Bedrock Claude classification + NER",
-            lambda_function=compute_stack.content_analyst_fn,
+            lambda_function=content_analyst_fn,
             payload=sfn.TaskInput.from_object({
                 "s3_key": sfn.JsonPath.string_at("$.crawl_result.s3_key"),
                 "execution_id": sfn.JsonPath.string_at("$$.Execution.Id"),
@@ -182,7 +217,7 @@ class DarkWebFraudPipelineStack(Stack):
             self,
             "StructureData",
             comment="Data Structurer — STIX 2.1 graph + OpenSearch vector index",
-            lambda_function=compute_stack.data_structurer_fn,
+            lambda_function=data_structurer_fn,
             payload=sfn.TaskInput.from_object({
                 "analyst_output": sfn.JsonPath.object_at("$.analyst_result.analyst_output"),
                 "execution_id": sfn.JsonPath.string_at("$$.Execution.Id"),
@@ -202,7 +237,7 @@ class DarkWebFraudPipelineStack(Stack):
             self,
             "TagIntelligence",
             comment="Tagging Engine — ATT&CK + fraud taxonomy + MISP galaxy",
-            lambda_function=compute_stack.tagging_engine_fn,
+            lambda_function=tagging_engine_fn,
             payload=sfn.TaskInput.from_object({
                 "structurer_output": sfn.JsonPath.object_at("$.structurer_result.structurer_output"),
                 "execution_id": sfn.JsonPath.string_at("$$.Execution.Id"),
@@ -222,7 +257,7 @@ class DarkWebFraudPipelineStack(Stack):
             self,
             "GenerateAlerts",
             comment="Alert Generator — campaign convergence + SNS fan-out",
-            lambda_function=compute_stack.alert_generator_fn,
+            lambda_function=alert_generator_fn,
             payload=sfn.TaskInput.from_object({
                 "tagging_output": sfn.JsonPath.object_at("$.tagging_result.tagging_output"),
                 "execution_id": sfn.JsonPath.string_at("$$.Execution.Id"),

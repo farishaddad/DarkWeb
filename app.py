@@ -39,7 +39,6 @@ intelligence = DarkWebFraudIntelligenceStack(
     core_stack=core,
     description="Intelligence infrastructure: OpenSearch Serverless VECTORSEARCH (VPC-scoped)",
 )
-intelligence.add_dependency(core)
 
 # 3. Compute — depends on Core (bucket/tables/secrets) + Intelligence (OpenSearch endpoint)
 compute = DarkWebFraudComputeStack(
@@ -49,7 +48,6 @@ compute = DarkWebFraudComputeStack(
     intelligence_stack=intelligence,
     description="Compute: ECR, ECS/Fargate (Tor sidecar), Lambda agents, per-agent IAM roles",
 )
-compute.add_dependency(intelligence)
 
 # 4. Pipeline — depends on Core (SNS key) + Compute (Lambda ARNs, ECS cluster)
 pipeline = DarkWebFraudPipelineStack(
@@ -59,6 +57,5 @@ pipeline = DarkWebFraudPipelineStack(
     compute_stack=compute,
     description="Orchestration: Step Functions Express, EventBridge Scheduler, SNS/SQS, CloudWatch",
 )
-pipeline.add_dependency(compute)
 
 app.synth()
