@@ -512,7 +512,9 @@ class DarkWebFraudComputeStack(Stack):
         self.alert_topic = sns.Topic(
             self,
             "AlertTopic",
-            display_name="Dark Web Fraud Intelligence Alerts",
+            topic_name="dark-web-fraud-alerts.fifo",
+            fifo=True,
+            content_based_deduplication=True,
         )
 
                 # ---- Alert Generator -----------------------------------------------

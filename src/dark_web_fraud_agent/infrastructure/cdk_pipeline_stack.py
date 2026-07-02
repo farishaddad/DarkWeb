@@ -83,7 +83,9 @@ class DarkWebFraudPipelineStack(Stack):
         self.dlq = sqs.Queue(
             self,
             "DLQ",
-            queue_name="dark-web-fraud-dlq",
+            queue_name="dark-web-fraud-dlq.fifo",
+            fifo=True,
+            content_based_deduplication=True,
             retention_period=Duration.days(14),
             encryption=sqs.QueueEncryption.SQS_MANAGED,
         )
