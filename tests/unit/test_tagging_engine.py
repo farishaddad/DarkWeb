@@ -331,3 +331,170 @@ class TestTaggingEngineAgent:
     def test_initial_taxonomies_empty(self):
         engine = TaggingEngine()
         assert engine.get_loaded_taxonomies() == {}
+
+
+
+class TestMatchGalaxyCluster:
+    """Tests for match_galaxy_cluster — galaxy cluster matching via static fallback."""
+
+    def setup_method(self):
+        self.engine = TaggingEngine()
+
+    def test_none_category_returns_none(self):
+        """None fraud_category returns None (no match possible)."""
+        result = self.engine.match_galaxy_cluster(None)
+        assert result is None
+
+    def test_empty_category_returns_none(self):
+        """Empty string fraud_category returns None."""
+        result = self.engine.match_galaxy_cluster("")
+        assert result is None
+
+    def test_known_category_mfa_bypass_returns_cluster(self):
+        """Known category 'mfa_bypass' returns static galaxy cluster match."""
+        result = self.engine.match_galaxy_cluster("mfa_bypass")
+        assert result is not None
+        assert result["galaxy"] == "mitre-attack-pattern"
+        assert result["cluster_uuid"] == "mfa-bypass-001"
+        assert result["cluster_value"] == "MFA Bypass"
+        assert result["source"] == "static"
+
+    def test_known_category_phishing_kit_returns_cluster(self):
+        """Known category 'phishing_kit' returns static galaxy cluster match."""
+        result = self.engine.match_galaxy_cluster("phishing_kit")
+        assert result is not None
+        assert result["galaxy"] == "mitre-attack-pattern"
+        assert result["cluster_value"] == "Phishing"
+        assert result["source"] == "static"
+
+    def test_known_category_account_takeover_returns_cluster(self):
+        """Known category 'account_takeover' returns static galaxy cluster match."""
+        result = self.engine.match_galaxy_cluster("account_takeover")
+        assert result is not None
+        assert result["galaxy"] == "mitre-attack-pattern"
+        assert result["cluster_value"] == "Account Takeover"
+
+    def test_known_category_money_mule_returns_cluster(self):
+        """Known category 'money_mule' returns financial-fraud galaxy."""
+        result = self.engine.match_galaxy_cluster("money_mule")
+        assert result is not None
+        assert result["galaxy"] == "financial-fraud"
+        assert result["cluster_value"] == "Money Mule Network"
+
+    def test_unknown_category_returns_none(self):
+        """Unknown fraud_category returns None from static lookup."""
+        result = self.engine.match_galaxy_cluster("totally_unknown_category")
+        assert result is None
+
+    def test_result_contains_required_keys(self):
+        """A successful match always contains galaxy, cluster_uuid, cluster_value, source."""
+        result = self.engine.match_galaxy_cluster("investment_fraud")
+        assert result is not None
+        assert "galaxy" in result
+        assert "cluster_uuid" in result
+        assert "cluster_value" in result
+        assert "source" in result
+
+
+class TestTagOrchestration:
+    """Tests for tag() — the orchestration method combining all tagging steps."""
+
+    def setup_method(self):
+        self.engine = TaggingEngine()
+
+    def test_tag_returns_dict_with_tags_and_galaxy_match(self):
+        """tag() returns dict with 'tags' list and 'galaxy_match' key."""
+        result = self.engine.tag(entities=[], fraud_category="mfa_bypass", severity=7)
+        assert "tags" in result
+        assert "galaxy_match" in result
+        assert isinstance(result["tags"], list)
+
+    def test_tag_applies_attack_tags_for_known_category(self):
+        """tag() applies MITRE ATT&CK tags for a known fraud category."""
+        result = self.engine.tag(entities=[], fraud_category="mfa_bypass", severity=5)
+        tags = result["tags"]
+        attack_tags = [t for t in tags if t.namespace == "mitre-attack"]
+        assert len(attack_tags) >= 1
+        assert attack_tags[0].value == "T1111"
+
+    def test_tag_applies_threat_level_tag(self):
+        """tag() always applies a threat-level tag based on severity."""
+        result = self.engine.tag(entities=[], fraud_category="mfa_bypass", severity=9)
+        tags = result["tags"]
+        level_tags = [t for t in tags if t.namespace == "threat-level"]
+        assert len(level_tags) == 1
+        assert level_tags[0].value == "high"
+
+    def test_tag_applies_galaxy_tag_when_matched(self):
+        """tag() applies misp-galaxy tag when galaxy cluster is matched."""
+        result = self.engine.tag(entities=[], fraud_category="phishing_kit", severity=5)
+        tags = result["tags"]
+        galaxy_tags = [t for t in tags if t.namespace == "misp-galaxy"]
+        assert len(galaxy_tags) == 1
+        assert galaxy_tags[0].predicate == "mitre-attack-pattern"
+        assert galaxy_tags[0].value == "Phishing"
+
+    def test_tag_galaxy_match_in_result(self):
+        """tag() includes galaxy_match dict when category matches a cluster."""
+        result = self.engine.tag(entities=[], fraud_category="money_mule", severity=8)
+        assert result["galaxy_match"] is not None
+        assert result["galaxy_match"]["galaxy"] == "financial-fraud"
+        assert result["galaxy_match"]["cluster_value"] == "Money Mule Network"
+
+    def test_tag_applies_fraud_tags_for_entities(self):
+        """tag() applies fraud tags when entities contain banking keywords."""
+        entity = ExtractedEntity(
+            entity_type="bank_name",
+            value="HSBC",
+            context="targeting HSBC accounts",
+            confidence=0.95,
+        )
+        result = self.engine.tag(
+            entities=[entity], fraud_category=None, severity=5
+        )
+        tags = result["tags"]
+        fraud_tags = [t for t in tags if t.namespace == "fraud"]
+        assert len(fraud_tags) >= 1
+        assert any(t.predicate == "target" and t.value == "hsbc" for t in fraud_tags)
+
+    def test_tag_requires_review_when_no_match(self):
+        """tag() applies workflow:status='requires-review' when nothing matches."""
+        result = self.engine.tag(
+            entities=[], fraud_category="nonexistent_category_xyz", severity=2
+        )
+        tags = result["tags"]
+        review_tags = [
+            t for t in tags
+            if t.namespace == "workflow" and t.predicate == "status" and t.value == "requires-review"
+        ]
+        assert len(review_tags) == 1
+        assert result["galaxy_match"] is None
+
+    def test_tag_no_requires_review_when_attack_tags_present(self):
+        """tag() does NOT apply requires-review when attack tags are produced."""
+        result = self.engine.tag(entities=[], fraud_category="mfa_bypass", severity=5)
+        tags = result["tags"]
+        review_tags = [
+            t for t in tags
+            if t.namespace == "workflow" and t.predicate == "status" and t.value == "requires-review"
+        ]
+        assert len(review_tags) == 0
+
+    def test_tag_no_requires_review_when_fraud_tags_present(self):
+        """tag() does NOT apply requires-review when fraud tags are produced."""
+        entity = ExtractedEntity(
+            entity_type="bin_range",
+            value="411111",
+            context="BIN dump detected",
+            confidence=0.9,
+        )
+        result = self.engine.tag(
+            entities=[entity], fraud_category=None, severity=3
+        )
+        tags = result["tags"]
+        review_tags = [
+            t for t in tags
+            if t.namespace == "workflow" and t.predicate == "status" and t.value == "requires-review"
+        ]
+        # fraud tags are present (bin-attack), so no requires-review
+        assert len(review_tags) == 0

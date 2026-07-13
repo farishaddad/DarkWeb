@@ -133,21 +133,24 @@ class TestApplyAttackTags:
         tags = self.engine.apply_attack_tags("mfa_bypass")
         assert tags == [MachineTag("mitre-attack", "technique", "T1111")]
 
-    def test_phishing_kit_maps_to_t1566(self):
+    def test_phishing_kit_maps_to_t1566_with_sub_technique(self):
         tags = self.engine.apply_attack_tags("phishing_kit")
-        assert tags == [MachineTag("mitre-attack", "technique", "T1566")]
+        assert MachineTag("mitre-attack", "technique", "T1566") in tags
+        assert MachineTag("mitre-attack", "technique", "T1566.001") in tags
 
-    def test_account_takeover_maps_to_t1110(self):
+    def test_account_takeover_maps_to_t1078_with_sub_technique(self):
         tags = self.engine.apply_attack_tags("account_takeover")
-        assert tags == [MachineTag("mitre-attack", "technique", "T1110")]
+        assert MachineTag("mitre-attack", "technique", "T1078") in tags
+        assert MachineTag("mitre-attack", "technique", "T1078.001") in tags
 
-    def test_synthetic_identity_maps_to_t1583(self):
+    def test_synthetic_identity_maps_to_t1585_with_sub_technique(self):
         tags = self.engine.apply_attack_tags("synthetic_identity")
-        assert tags == [MachineTag("mitre-attack", "technique", "T1583")]
+        assert MachineTag("mitre-attack", "technique", "T1585") in tags
+        assert MachineTag("mitre-attack", "technique", "T1585.001") in tags
 
-    def test_cnp_fraud_maps_to_t1499(self):
+    def test_cnp_fraud_maps_to_t1539(self):
         tags = self.engine.apply_attack_tags("cnp_fraud")
-        assert tags == [MachineTag("mitre-attack", "technique", "T1499")]
+        assert tags == [MachineTag("mitre-attack", "technique", "T1539")]
 
     def test_none_returns_empty_list(self):
         tags = self.engine.apply_attack_tags(None)

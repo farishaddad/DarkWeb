@@ -718,6 +718,127 @@ class AlertGenerator(AgentBase):
         }
         return result
 
+    def process(
+        self,
+        event: dict,
+        sns_topic_arn: str | None = None,
+        sns_client: Any = None,
+    ) -> FraudAlert | None:
+        """Orchestrate correlation, alert generation, and publishing.
+
+        This is the primary entry point for the Alert Generator agent. It:
+        1. Tracks the incoming intelligence item for convergence detection.
+        2. Checks campaign convergence (TTP grouping + entity co-occurrence).
+        3. Generates a campaign alert if convergence threshold is met or
+           severity exceeds the high-severity threshold.
+        4. Publishes the alert to SNS if a topic ARN is available.
+        5. Falls back to generating a summary digest when no high-severity
+           finding is detected and the event explicitly requests it.
+
+        Args:
+            event: Step Functions payload dict with keys:
+                - stix_bundle_key (str): S3 key of the STIX bundle.
+                - fraud_category (str): The fraud category.
+                - severity_score (int): Severity from Content Analyst (1-10).
+                - tags (list[str]): Machine tags from Tagging Engine.
+                - entities (list[dict]): Extracted entities.
+                - s3_key (str): Original crawl artifact S3 key.
+                - tier (str): Intelligence tier.
+                - digest_items (list[dict], optional): Items for summary digest.
+                - digest_period (str, optional): Period description for digest.
+            sns_topic_arn: SNS topic ARN. Falls back to SNS_TOPIC_ARN env var.
+            sns_client: Optional boto3 SNS client.
+
+        Returns:
+            The generated FraudAlert if an alert was produced, None otherwise.
+        """
+        stix_bundle_key: str | None = event.get("stix_bundle_key")
+        fraud_category: str | None = event.get("fraud_category")
+        severity_score: int = int(event.get("severity_score", 3))
+        tags: list[str] = event.get("tags", [])
+        entities_payload: list[dict] = event.get("entities", [])
+        s3_key: str = event.get("s3_key", "")
+        tier: str = event.get("tier", "observable")
+        high_severity_threshold: int = int(
+            os.environ.get("HIGH_SEVERITY_THRESHOLD", "7")
+        )
+
+        if sns_topic_arn is None:
+            sns_topic_arn = os.environ.get("SNS_TOPIC_ARN", "")
+
+        # --- Summary digest path ---
+        digest_items = event.get("digest_items")
+        digest_period = event.get("digest_period")
+        if digest_items is not None and digest_period:
+            alert = self.generate_summary_digest(digest_items, digest_period)
+            if sns_topic_arn:
+                self.publish_alert(alert, sns_topic_arn, sns_client)
+            self.update_health(items_processed=1, errors=0)
+            return alert
+
+        # --- Standard pipeline path ---
+        if not stix_bundle_key or not fraud_category:
+            logger.info("AlertGenerator.process: missing stix_bundle_key or fraud_category, skipping")
+            return None
+
+        # Derive a stable TTP reference from attack tags or fraud category
+        attack_tags = [t for t in tags if t.startswith("mitre-attack:")]
+        ttp_ref = attack_tags[0] if attack_tags else f"fraud:{fraud_category}"
+
+        # Step 1: Track item for convergence
+        self.track_item(
+            stix_id=stix_bundle_key,
+            ttp_reference=ttp_ref,
+            tier=tier,
+            entity_values=entities_payload,
+        )
+
+        # Step 2: Check TTP convergence
+        convergence_ids = self.check_campaign_convergence(ttp_ref)
+
+        # Step 3: Check cross-entity co-occurrence if no TTP convergence
+        if not convergence_ids:
+            for entity in entities_payload:
+                if entity.get("entity_type") == "bank_name":
+                    convergence_ids = self.check_entity_cooccurrence(
+                        entity_type="bank_name",
+                        entity_value=entity["value"],
+                    )
+                    if convergence_ids:
+                        fraud_category = f"{fraud_category}+cross_signal_cooccurrence"
+                        break
+
+        # Step 4: Generate alert if convergence detected or high severity
+        immediate_alert = severity_score >= high_severity_threshold
+        if not convergence_ids and not immediate_alert:
+            self.update_health(items_processed=1, errors=0)
+            return None
+
+        alert = self.generate_campaign_alert(
+            ttp_reference=ttp_ref,
+            ttp_description=f"[{fraud_category}] Campaign or high-severity intelligence detected",
+            affected_institutions=[
+                e["value"]
+                for e in entities_payload
+                if e.get("entity_type") == "bank_name"
+            ],
+            related_ids=convergence_ids or [stix_bundle_key],
+            source_url=s3_key,
+            crawl_timestamp=datetime.now(UTC),
+        )
+
+        # Step 5: Publish to SNS
+        if sns_topic_arn:
+            self.publish_alert(alert, sns_topic_arn, sns_client)
+
+        self.update_health(items_processed=1, errors=0)
+        logger.info(
+            "AlertGenerator.process: published alert %s for TTP %s",
+            alert.alert_id,
+            ttp_ref,
+        )
+        return alert
+
     def generate_summary_digest(
         self,
         items: list[dict],

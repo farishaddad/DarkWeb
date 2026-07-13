@@ -2,21 +2,21 @@
 
 Provisions:
 - Multi-AZ VPC with public / private-egress / isolated subnets
-  and 2 NAT Gateways (one per AZ — previously single-AZ SPOF)
-- VPC Interface Endpoints for Bedrock, Secrets Manager, and OpenSearch so
-  Lambda / ECS agents never route AWS API calls via the NAT Gateway
+  and 2 NAT Gateways (one per AZ for HA)
+- VPC Interface Endpoints for Bedrock, Secrets Manager, OpenSearch, ECR,
+  CloudWatch Logs — Lambda/ECS agents never route AWS API calls via NAT
 - S3 Gateway Endpoint (free, removes S3 traffic from NAT bandwidth)
-- KMS Customer Managed Key (CMK) — used by S3, DynamoDB, ECR, and Secrets Manager
-  so every decrypt/encrypt is auditable via CloudTrail
+- DynamoDB Gateway Endpoint (free)
+- KMS Customer Managed Key (CMK) for encryption at rest across all services
 - S3 artifacts bucket with CMK encryption, Object Lock (WORM for forensic
   integrity), versioning, and Intelligent-Tiering lifecycle
-- DynamoDB tables with CMK encryption and Streams enabled on ConvergenceTable
-  (NEW_AND_OLD_IMAGES) so the Alert Generator Lambda can react to convergence
-  events without waiting for the Step Functions polling cycle
-- Entity co-occurrence GSI on ConvergenceTable (ENTITY# PK namespace) for
-  cross-signal composite alerting (CHAPS-026 pattern: credential + mule script)
-- Secrets Manager secrets for Tor and MISP credentials
-- Per-agent IAM roles (scoped least-privilege)
+- DynamoDB tables:
+    - Agent State (crawl circuit-breaker state)
+    - Convergence (TTP convergence + entity co-occurrence with TTL + GSI)
+- Secrets Manager secrets for Tor proxy and MISP API credentials
+- Per-agent IAM roles with least-privilege policies
+
+Requirements: 1.1, 8.1
 """
 
 from aws_cdk import (
@@ -24,6 +24,7 @@ from aws_cdk import (
     Duration,
     RemovalPolicy,
     Stack,
+    Tags,
     aws_dynamodb as dynamodb,
     aws_ec2 as ec2,
     aws_iam as iam,
@@ -35,34 +36,40 @@ from constructs import Construct
 
 
 class DarkWebFraudCoreStack(Stack):
-    """Core infrastructure: VPC, KMS, S3, DynamoDB, Secrets Manager, IAM."""
+    """Core infrastructure: VPC, KMS, S3, DynamoDB, Secrets Manager, IAM.
+
+    This stack has no dependencies and must be deployed first.
+    All other stacks depend on resources exported from here.
+    """
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # =====================================================================
+        # Apply project-wide tags to all resources in this stack
+        Tags.of(self).add("Project", "dark-web-fraud")
+        Tags.of(self).add("Env", "prod")
+
+        # =================================================================
         # KMS Customer Managed Key
-        # Shared CMK — individual key policies in each resource scope access
-        # per-agent IAM role.  In a higher-security environment, use separate
-        # CMKs per data classification tier (raw / structured / alerts).
-        # =====================================================================
+        # Shared CMK — key policies scope access per-agent IAM role.
+        # =================================================================
         self.kms_key = kms.Key(
             self,
             "DarkWebFraudCMK",
             alias="alias/dark-web-fraud",
             description="Dark Web Fraud Intelligence Agent — CMK for all data at rest",
-            enable_key_rotation=True,  # Annual rotation
+            enable_key_rotation=True,
             removal_policy=RemovalPolicy.RETAIN,
         )
 
-        # =====================================================================
-        # VPC — two NAT Gateways (previously single NAT = SPOF for Tor egress)
-        # =====================================================================
+        # =================================================================
+        # VPC — two NAT Gateways for HA Tor egress
+        # =================================================================
         self.vpc = ec2.Vpc(
             self,
             "TorProxyVpc",
             max_azs=2,
-            nat_gateways=2,       # One NAT per AZ — eliminates cross-AZ failover gap
+            nat_gateways=2,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     name="Public",
@@ -73,35 +80,33 @@ class DarkWebFraudCoreStack(Stack):
                     name="Private",
                     subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
                     cidr_mask=24,
-                    # Fargate crawl tasks run here — egress via NAT → Tor internet
+                    # Fargate crawl tasks — egress via NAT → Tor
                 ),
                 ec2.SubnetConfiguration(
                     name="Isolated",
                     subnet_type=ec2.SubnetType.PRIVATE_ISOLATED,
                     cidr_mask=24,
-                    # Lambda agents run here — reach AWS services ONLY via
-                    # VPC endpoints, never the internet
+                    # Lambda agents — reach AWS services ONLY via VPC endpoints
                 ),
             ],
         )
 
-        # =====================================================================
-        # VPC Endpoints — prevent Lambda/ECS API calls traversing NAT Gateway
-        # =====================================================================
-
-        # S3 Gateway Endpoint (free, handles S3 traffic for all subnets)
+        # =================================================================
+        # VPC Gateway Endpoints (free — no per-hour cost)
+        # =================================================================
         self.vpc.add_gateway_endpoint(
             "S3GatewayEndpoint",
             service=ec2.GatewayVpcEndpointAwsService.S3,
         )
 
-        # DynamoDB Gateway Endpoint (free)
         self.vpc.add_gateway_endpoint(
             "DynamoDBGatewayEndpoint",
             service=ec2.GatewayVpcEndpointAwsService.DYNAMODB,
         )
 
-        # Shared Security Group for VPC Interface Endpoints (Isolated subnet agents)
+        # =================================================================
+        # VPC Interface Endpoints — keep Lambda/ECS off NAT for AWS APIs
+        # =================================================================
         endpoint_sg = ec2.SecurityGroup(
             self,
             "VpcEndpointSG",
@@ -110,19 +115,19 @@ class DarkWebFraudCoreStack(Stack):
             description="Allow HTTPS from Isolated subnets to VPC Interface Endpoints",
             allow_all_outbound=False,
         )
-        # Allow inbound HTTPS from Isolated subnet CIDR(s)
+
         for subnet in self.vpc.isolated_subnets:
             endpoint_sg.add_ingress_rule(
                 peer=ec2.Peer.ipv4(subnet.ipv4_cidr_block),
                 connection=ec2.Port.tcp(443),
-                description=f"HTTPS from Isolated subnet {subnet.subnet_id}",
+                description=f"HTTPS from Isolated subnet {subnet.node.id}",
             )
 
         isolated_selection = ec2.SubnetSelection(
-            subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
+            subnet_type=ec2.SubnetType.PRIVATE_ISOLATED,
         )
 
-        # Secrets Manager Interface Endpoint (used by crawl task + Lambda agents)
+        # Secrets Manager (used by crawl task + Lambda agents)
         self.vpc.add_interface_endpoint(
             "SecretsManagerEndpoint",
             service=ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER,
@@ -131,9 +136,29 @@ class DarkWebFraudCoreStack(Stack):
             private_dns_enabled=True,
         )
 
+        # Bedrock Runtime (Content Analyst + Data Structurer)
+        self.vpc.add_interface_endpoint(
+            "BedrockRuntimeEndpoint",
+            service=ec2.InterfaceVpcEndpointService(
+                f"com.amazonaws.{self.region}.bedrock-runtime", port=443
+            ),
+            subnets=isolated_selection,
+            security_groups=[endpoint_sg],
+            private_dns_enabled=True,
+        )
 
+        # OpenSearch Serverless (Data Structurer + Alert Generator)
+        self.vpc.add_interface_endpoint(
+            "OpenSearchServerlessEndpoint",
+            service=ec2.InterfaceVpcEndpointService(
+                f"com.amazonaws.{self.region}.aoss", port=443
+            ),
+            subnets=isolated_selection,
+            security_groups=[endpoint_sg],
+            private_dns_enabled=True,
+        )
 
-        # ECR Interface Endpoints (needed for Fargate to pull images without NAT)
+        # ECR (Fargate image pull without NAT)
         self.vpc.add_interface_endpoint(
             "EcrApiEndpoint",
             service=ec2.InterfaceVpcEndpointAwsService.ECR,
@@ -149,7 +174,7 @@ class DarkWebFraudCoreStack(Stack):
             private_dns_enabled=True,
         )
 
-        # CloudWatch Logs (Lambda + ECS log shipping without internet)
+        # CloudWatch Logs (Lambda + ECS log shipping)
         self.vpc.add_interface_endpoint(
             "CloudWatchLogsEndpoint",
             service=ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS,
@@ -158,20 +183,18 @@ class DarkWebFraudCoreStack(Stack):
             private_dns_enabled=True,
         )
 
-        # =====================================================================
+        # =================================================================
         # S3 Artifacts Bucket
-        # - CMK encryption (replaces previous S3_MANAGED)
-        # - Versioning + Object Lock (WORM) for forensic evidence integrity
-        # - Intelligent-Tiering lifecycle (auto-archives cold artifacts)
-        # - Replication requires a destination bucket in another region — set up
-        #   manually in a second region and uncomment the replication config.
-        # =====================================================================
+        # - CMK encryption (auditable via CloudTrail)
+        # - Versioning + Object Lock (WORM) for forensic integrity
+        # - Intelligent-Tiering lifecycle (archives cold artifacts)
+        # =================================================================
         self.artifacts_bucket = s3.Bucket(
             self,
             "ArtifactsBucket",
             encryption=s3.BucketEncryption.KMS,
             encryption_key=self.kms_key,
-            bucket_key_enabled=True,       # Reduces KMS API calls by ~99%
+            bucket_key_enabled=True,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             enforce_ssl=True,
             removal_policy=RemovalPolicy.RETAIN,
@@ -183,8 +206,8 @@ class DarkWebFraudCoreStack(Stack):
                     transitions=[
                         s3.Transition(
                             storage_class=s3.StorageClass.INTELLIGENT_TIERING,
-                            transition_after=Duration.days(0),  # Immediate
-                        )
+                            transition_after=Duration.days(0),
+                        ),
                     ],
                     noncurrent_version_expiration=Duration.days(90),
                     abort_incomplete_multipart_upload_after=Duration.days(7),
@@ -197,73 +220,67 @@ class DarkWebFraudCoreStack(Stack):
             ],
         )
 
-        # =====================================================================
-        # DynamoDB Tables — CMK encryption + Streams
-        # =====================================================================
+        # =================================================================
+        # DynamoDB Tables — CMK encryption, PAY_PER_REQUEST billing
+        # =================================================================
 
-        # Agent state table (crawl circuit breaker state)
+        # Agent state table (crawl circuit-breaker state)
         self.agent_state_table = dynamodb.Table(
             self,
             "AgentStateTable",
             table_name="dark-web-fraud-agent-state",
-            partition_key=dynamodb.Attribute(name="PK", type=dynamodb.AttributeType.STRING),
-            sort_key=dynamodb.Attribute(name="SK", type=dynamodb.AttributeType.STRING),
+            partition_key=dynamodb.Attribute(
+                name="PK", type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="SK", type=dynamodb.AttributeType.STRING
+            ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             encryption=dynamodb.TableEncryption.CUSTOMER_MANAGED,
             encryption_key=self.kms_key,
             removal_policy=RemovalPolicy.RETAIN,
-            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(point_in_time_recovery_enabled=True),
+            point_in_time_recovery=True,
         )
 
-        # Convergence table (campaign convergence tracking with TTL)
-        # Streams enabled: Alert Generator Lambda triggers on INSERT events
+        # Convergence table (TTP convergence + entity co-occurrence)
+        # Streams enabled: Alert Generator Lambda triggers on convergence events
         self.convergence_table = dynamodb.Table(
             self,
             "ConvergenceTable",
             table_name="dark-web-fraud-convergence",
-            partition_key=dynamodb.Attribute(name="PK", type=dynamodb.AttributeType.STRING),
-            sort_key=dynamodb.Attribute(name="SK", type=dynamodb.AttributeType.STRING),
+            partition_key=dynamodb.Attribute(
+                name="PK", type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="SK", type=dynamodb.AttributeType.STRING
+            ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             encryption=dynamodb.TableEncryption.CUSTOMER_MANAGED,
             encryption_key=self.kms_key,
             removal_policy=RemovalPolicy.RETAIN,
             time_to_live_attribute="TTL",
-            stream=dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,  # Required for Lambda trigger
-            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(point_in_time_recovery_enabled=True),
+            stream=dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
+            point_in_time_recovery=True,
         )
 
-        # ===================================================================
-        # Global Secondary Index — entity co-occurrence (CHAPS-026 pattern)
-        #
-        # Supports cross-signal composite alerting: when the same bank name
-        # appears in a Source 1 credential listing (tier=observable) AND a
-        # Source 2 mule-recruitment post (tier=ttp) within the convergence
-        # window, check_entity_cooccurrence() fires a composite alert.
-        #
-        # track_item() writes entity items under PK = ENTITY#<type>#<value>
-        # (lowercased). This GSI enables Query on that PK without a table scan.
-        #
-        # Projection: ALL — the Alert Generator needs stix_id + tier + timestamp
-        # to build the composite alert payload; projecting ALL avoids a second
-        # GetItem fetch per entity hit.
-        # ===================================================================
+        # GSI: entity-cooccurrence-index
+        # PK: PK (STRING) — queries ENTITY#bank_name#<institution> items
+        # SK: SK (STRING)
+        # Projection: ALL
         self.convergence_table.add_global_secondary_index(
             index_name="entity-cooccurrence-index",
             partition_key=dynamodb.Attribute(
-                name="PK",
-                type=dynamodb.AttributeType.STRING,
+                name="PK", type=dynamodb.AttributeType.STRING
             ),
             sort_key=dynamodb.Attribute(
-                name="SK",
-                type=dynamodb.AttributeType.STRING,
+                name="SK", type=dynamodb.AttributeType.STRING
             ),
             projection_type=dynamodb.ProjectionType.ALL,
-            # GSI billing inherits from table (PAY_PER_REQUEST)
         )
 
-        # =====================================================================
+        # =================================================================
         # Secrets Manager — Tor + MISP credentials
-        # =====================================================================
+        # =================================================================
         self.tor_credentials = secretsmanager.Secret(
             self,
             "TorCredentials",
@@ -282,14 +299,138 @@ class DarkWebFraudCoreStack(Stack):
             secret_name="dark-web-fraud/misp-api-key",
             description="MISP REST API key for event publishing",
             encryption_key=self.kms_key,
-            # Rotation: attach a rotation Lambda targeting your MISP instance
-            # self.misp_api_key.add_rotation_schedule(...)
         )
 
+        # =================================================================
+        # IAM Roles — least-privilege per agent
+        # =================================================================
 
-        # =====================================================================
+        # Crawling Engine role (ECS Fargate task)
+        self.crawling_engine_role = iam.Role(
+            self,
+            "CrawlingEngineRole",
+            assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+            role_name="dark-web-fraud-crawling-engine",
+            description="Crawling Engine — S3 write, DynamoDB state, Secrets read",
+        )
+        self.artifacts_bucket.grant_read_write(self.crawling_engine_role)
+        self.agent_state_table.grant_read_write_data(self.crawling_engine_role)
+        self.tor_credentials.grant_read(self.crawling_engine_role)
+
+        # Content Analyst role (Lambda)
+        self.content_analyst_role = iam.Role(
+            self,
+            "ContentAnalystRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            role_name="dark-web-fraud-content-analyst",
+            description="Content Analyst — S3 read, Bedrock invoke",
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name(
+                    "service-role/AWSLambdaVPCAccessExecutionRole"
+                ),
+            ],
+        )
+        self.artifacts_bucket.grant_read(self.content_analyst_role)
+        self.content_analyst_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel", "bedrock:ApplyGuardrail"],
+                resources=["*"],
+                effect=iam.Effect.ALLOW,
+            )
+        )
+
+        # Data Structurer role (Lambda)
+        self.data_structurer_role = iam.Role(
+            self,
+            "DataStructurerRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            role_name="dark-web-fraud-data-structurer",
+            description="Data Structurer — S3 read/write, OpenSearch, Bedrock embeddings",
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name(
+                    "service-role/AWSLambdaVPCAccessExecutionRole"
+                ),
+            ],
+        )
+        self.artifacts_bucket.grant_read_write(self.data_structurer_role)
+        self.data_structurer_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                resources=["*"],
+                effect=iam.Effect.ALLOW,
+            )
+        )
+        self.data_structurer_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["aoss:APIAccessAll"],
+                resources=["*"],
+                effect=iam.Effect.ALLOW,
+            )
+        )
+        self.misp_api_key.grant_read(self.data_structurer_role)
+
+        # Tagging Engine role (Lambda)
+        self.tagging_engine_role = iam.Role(
+            self,
+            "TaggingEngineRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            role_name="dark-web-fraud-tagging-engine",
+            description="Tagging Engine — S3 read (taxonomy), Knowledge Base query",
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name(
+                    "service-role/AWSLambdaVPCAccessExecutionRole"
+                ),
+            ],
+        )
+        self.artifacts_bucket.grant_read(self.tagging_engine_role)
+        self.tagging_engine_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "bedrock:Retrieve",
+                    "bedrock:RetrieveAndGenerate",
+                ],
+                resources=["*"],
+                effect=iam.Effect.ALLOW,
+            )
+        )
+        self.misp_api_key.grant_read(self.tagging_engine_role)
+
+        # Alert Generator role (Lambda)
+        self.alert_generator_role = iam.Role(
+            self,
+            "AlertGeneratorRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            role_name="dark-web-fraud-alert-generator",
+            description="Alert Generator — DynamoDB convergence, OpenSearch query, SNS publish",
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name(
+                    "service-role/AWSLambdaVPCAccessExecutionRole"
+                ),
+            ],
+        )
+        self.convergence_table.grant_read_write_data(self.alert_generator_role)
+        self.artifacts_bucket.grant_read(self.alert_generator_role)
+        self.alert_generator_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["aoss:APIAccessAll"],
+                resources=["*"],
+                effect=iam.Effect.ALLOW,
+            )
+        )
+        self.alert_generator_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["cloudwatch:PutMetricData"],
+                resources=["*"],
+                conditions={
+                    "StringEquals": {"cloudwatch:namespace": "dark-web-fraud"}
+                },
+                effect=iam.Effect.ALLOW,
+            )
+        )
+
+        # =================================================================
         # Stack Outputs
-        # =====================================================================
+        # =================================================================
         CfnOutput(self, "VpcId", value=self.vpc.vpc_id)
         CfnOutput(self, "BucketName", value=self.artifacts_bucket.bucket_name)
         CfnOutput(self, "KmsKeyArn", value=self.kms_key.key_arn)
@@ -307,14 +448,5 @@ class DarkWebFraudCoreStack(Stack):
             self,
             "ConvergenceTableStreamArn",
             value=self.convergence_table.table_stream_arn or "streams-not-enabled",
-            description="DynamoDB Streams ARN — used by Alert Generator Lambda event source",
-        )
-        CfnOutput(
-            self,
-            "EntityCooccurrenceIndexName",
-            value="entity-cooccurrence-index",
-            description=(
-                "GSI name for cross-entity co-occurrence queries in CHAPS-026 composite alerts. "
-                "Inject as ENTITY_INDEX_NAME env var into the Alert Generator Lambda."
-            ),
+            description="DynamoDB Streams ARN for Alert Generator Lambda event source",
         )

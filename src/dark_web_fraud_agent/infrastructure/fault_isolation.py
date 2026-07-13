@@ -2,13 +2,28 @@
 
 Provides the FaultIsolator class for tracking agent failures, isolating
 misbehaving agents after consecutive failures, and aggregating pipeline health.
+
+Also provides RetryConfig for exponential-backoff retry logic and
+DeadLetterQueueRouter for routing failed items to an SQS DLQ.
 """
 
+import json
+import logging
+import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Optional
 
 from dark_web_fraud_agent.models.shared import AgentHealth
+
+logger = logging.getLogger(__name__)
+
+# Core agents whose failure makes the pipeline "critical"
+_CORE_AGENT_IDS = frozenset({
+    "crawling_engine",
+    "content_analyst",
+    "data_structurer",
+})
 
 
 @dataclass
@@ -129,32 +144,50 @@ class FaultIsolator:
         return [f for f in self._failure_history if f.agent_id == agent_id]
 
     def get_pipeline_health(
-        self, agent_healths: list[AgentHealth]
+        self,
+        agent_healths: list[AgentHealth],
+        core_agent_ids: frozenset[str] | None = None,
     ) -> dict[str, Any]:
         """Aggregate pipeline-level health from individual agent health reports.
 
         Determines overall pipeline status:
         - "healthy": all agents report healthy status
-        - "degraded": some agents are unhealthy or isolated
+        - "degraded": some non-core agents are unhealthy or isolated
+        - "critical": a core agent (crawling_engine, content_analyst, data_structurer) is down
         - "failed": all agents are unhealthy
 
         Args:
             agent_healths: List of AgentHealth reports from each agent.
+            core_agent_ids: Optional override for the set of core agent IDs.
+                Defaults to the module-level _CORE_AGENT_IDS.
 
         Returns:
             Dictionary with pipeline health summary including status,
             healthy/total agent counts, isolated agents list, and total failures.
         """
+        core_ids = core_agent_ids if core_agent_ids is not None else _CORE_AGENT_IDS
         total = len(agent_healths)
         healthy_count = sum(1 for h in agent_healths if h.status == "healthy")
-        isolated = [
-            aid for aid in self._isolated_agents
-        ]
+        isolated = list(self._isolated_agents)
+
+        # Determine if any core agent is unhealthy or isolated
+        core_agent_down = False
+        for health in agent_healths:
+            if health.agent_id in core_ids and health.status != "healthy":
+                core_agent_down = True
+                break
+        if not core_agent_down:
+            for agent_id in self._isolated_agents:
+                if agent_id in core_ids:
+                    core_agent_down = True
+                    break
 
         if total == 0:
             status = "healthy"
-        elif healthy_count == total:
+        elif healthy_count == total and not core_agent_down:
             status = "healthy"
+        elif core_agent_down:
+            status = "critical"
         elif healthy_count == 0:
             status = "failed"
         else:
