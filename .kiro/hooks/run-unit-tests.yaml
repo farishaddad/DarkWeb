@@ -1,0 +1,11 @@
+# Hook: run related unit tests on agent file save
+# Triggered when: any agents/*.py file is saved
+# Purpose: catch regressions before committing
+
+on_save:
+  match: "src/dark_web_fraud_agent/agents/*.py"
+  run: |
+    python -m pytest tests/unit/ -q --tb=short -x 2>&1 | tail -20
+  on_failure: |
+    echo 'HOOK FAILED: Unit tests failed after agent file change.'
+    echo 'Run: python -m pytest tests/unit/ -v --tb=long for full output.'

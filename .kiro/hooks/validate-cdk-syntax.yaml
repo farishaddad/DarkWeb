@@ -1,0 +1,23 @@
+# Hook: validate CDK stack syntax on infra file save
+# Triggered when: infrastructure/*.py is saved
+# Purpose: catch CDK construct errors before cdk synth
+
+on_save:
+  match: "src/dark_web_fraud_agent/infrastructure/cdk_*.py"
+  run: |
+    python -c "
+    import ast, sys, os
+    changed = os.environ.get('KIRO_CHANGED_FILE', '')
+    if not changed:
+        sys.exit(0)
+    with open(changed) as f:
+        src = f.read()
+    try:
+        ast.parse(src)
+        print(f'CDK hook: {changed} — syntax OK')
+    except SyntaxError as e:
+        print(f'CDK hook FAIL: {e}')
+        sys.exit(1)
+    "
+  on_failure: |
+    echo 'HOOK FAILED: CDK stack file has a syntax error.'

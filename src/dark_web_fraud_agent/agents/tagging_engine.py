@@ -314,6 +314,17 @@ class TaggingEngine(AgentBase):
                 tags.append(MachineTag("fraud", "type", "crypto-fraud"))
             if entity.entity_type == "bank_name":
                 tags.append(MachineTag("fraud", "target", entity.value.lower()))
+            # Extended entity tags
+            if entity.entity_type == "monero_wallet":
+                tags.append(MachineTag("fraud", "type", "crypto-laundering"))
+            if entity.entity_type == "merchant_id":
+                tags.append(MachineTag("fraud", "type", "merchant-account-fraud"))
+            if entity.entity_type == "acquiring_bin":
+                tags.append(MachineTag("fraud", "type", "acquiring-bin-abuse"))
+            if entity.entity_type == "iban":
+                tags.append(MachineTag("fraud", "type", "cross-border-transfer"))
+            if entity.entity_type == "national_id":
+                tags.append(MachineTag("fraud", "type", "identity-document-fraud"))
 
         return tags
 
@@ -340,17 +351,25 @@ class TaggingEngine(AgentBase):
             #   T1566.001 = Spearphishing Attachment (phishing kit delivery)
             #   T1078.001 = Default Accounts (account takeover via credential stuffing)
             #   T1110.004 = Credential Stuffing (account takeover brute-force variant)
-            "mfa_bypass":         "T1111",   # Multi-Factor Authentication Interception
-            "phishing_kit":       "T1566",   # Phishing (T1566.001 for attachment delivery)
-            "account_takeover":   "T1078",   # Valid Accounts (T1078.001 default creds)
-            "synthetic_identity": "T1585",   # Establish Accounts (T1585.001 social media)
-            "cnp_fraud":          "T1539",   # Steal Web Session Cookie (CNP card-not-present)
+            "mfa_bypass":              "T1111",    # Multi-Factor Authentication Interception
+            "phishing_kit":            "T1566",    # Phishing (T1566.001 for attachment delivery)
+            "account_takeover":        "T1078",    # Valid Accounts (T1078.001 default creds)
+            "synthetic_identity":      "T1585",    # Establish Accounts (T1585.001 social media)
+            "cnp_fraud":               "T1539",    # Steal Web Session Cookie (CNP card-not-present)
+            # Extended mappings — added for patterns DC-007, DC-008, CHAPS-026, XC-007
+            "new_account_fraud":       "T1136",    # Create Account (Fullz → new account opening)
+            "recurring_billing_fraud": "T1499",    # Endpoint Denial of Service (billing API abuse)
+            "money_mule":              "T1531",    # Account Access Removal (mule account manipulation)
+            "investment_fraud":        "T1583",    # Acquire Infrastructure (fake exchange setup)
+            "social_engineering":      "T1598",    # Phishing for Information (romance / scripted SE)
         }
         # Also emit sub-technique tags for SIEM rules that correlate at sub-technique level
         sub_technique_map: dict[str, str] = {
-            "phishing_kit":     "T1566.001",
-            "account_takeover": "T1078.001",
-            "synthetic_identity": "T1585.001",
+            "phishing_kit":            "T1566.001",
+            "account_takeover":        "T1078.001",
+            "synthetic_identity":      "T1585.001",
+            "investment_fraud":        "T1583.006",  # Web Services (fake exchange hosting)
+            "social_engineering":      "T1598.003",  # Spearphishing via Service (romance contact)
         }
 
         if fraud_category is None or fraud_category not in attack_map:
@@ -456,6 +475,32 @@ class TaggingEngine(AgentBase):
                 "galaxy": "mitre-attack-pattern",
                 "cluster_uuid": "ato-001",
                 "cluster_value": "Account Takeover",
+            },
+            # Extended galaxy mappings — DC-007, DC-008, CHAPS-026, XC-007
+            "new_account_fraud": {
+                "galaxy": "financial-fraud",
+                "cluster_uuid": "new-account-fraud-001",
+                "cluster_value": "New Account Fraud via Identity Theft",
+            },
+            "recurring_billing_fraud": {
+                "galaxy": "financial-fraud",
+                "cluster_uuid": "recurring-billing-001",
+                "cluster_value": "Recurring Billing Aggregation Fraud",
+            },
+            "money_mule": {
+                "galaxy": "financial-fraud",
+                "cluster_uuid": "money-mule-001",
+                "cluster_value": "Money Mule Network",
+            },
+            "investment_fraud": {
+                "galaxy": "financial-fraud",
+                "cluster_uuid": "pig-butchering-001",
+                "cluster_value": "Investment Fraud / Pig Butchering",
+            },
+            "social_engineering": {
+                "galaxy": "social-engineering",
+                "cluster_uuid": "romance-script-001",
+                "cluster_value": "Romance Scam / Social Engineering Script",
             },
         }
 

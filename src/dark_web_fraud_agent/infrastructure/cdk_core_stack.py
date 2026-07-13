@@ -13,6 +13,8 @@ Provisions:
 - DynamoDB tables with CMK encryption and Streams enabled on ConvergenceTable
   (NEW_AND_OLD_IMAGES) so the Alert Generator Lambda can react to convergence
   events without waiting for the Step Functions polling cycle
+- Entity co-occurrence GSI on ConvergenceTable (ENTITY# PK namespace) for
+  cross-signal composite alerting (CHAPS-026 pattern: credential + mule script)
 - Secrets Manager secrets for Tor and MISP credentials
 - Per-agent IAM roles (scoped least-privilege)
 """
@@ -230,6 +232,35 @@ class DarkWebFraudCoreStack(Stack):
             point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(point_in_time_recovery_enabled=True),
         )
 
+        # ===================================================================
+        # Global Secondary Index — entity co-occurrence (CHAPS-026 pattern)
+        #
+        # Supports cross-signal composite alerting: when the same bank name
+        # appears in a Source 1 credential listing (tier=observable) AND a
+        # Source 2 mule-recruitment post (tier=ttp) within the convergence
+        # window, check_entity_cooccurrence() fires a composite alert.
+        #
+        # track_item() writes entity items under PK = ENTITY#<type>#<value>
+        # (lowercased). This GSI enables Query on that PK without a table scan.
+        #
+        # Projection: ALL — the Alert Generator needs stix_id + tier + timestamp
+        # to build the composite alert payload; projecting ALL avoids a second
+        # GetItem fetch per entity hit.
+        # ===================================================================
+        self.convergence_table.add_global_secondary_index(
+            index_name="entity-cooccurrence-index",
+            partition_key=dynamodb.Attribute(
+                name="PK",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
+                name="SK",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            projection_type=dynamodb.ProjectionType.ALL,
+            # GSI billing inherits from table (PAY_PER_REQUEST)
+        )
+
         # =====================================================================
         # Secrets Manager — Tor + MISP credentials
         # =====================================================================
@@ -277,4 +308,13 @@ class DarkWebFraudCoreStack(Stack):
             "ConvergenceTableStreamArn",
             value=self.convergence_table.table_stream_arn or "streams-not-enabled",
             description="DynamoDB Streams ARN — used by Alert Generator Lambda event source",
+        )
+        CfnOutput(
+            self,
+            "EntityCooccurrenceIndexName",
+            value="entity-cooccurrence-index",
+            description=(
+                "GSI name for cross-entity co-occurrence queries in CHAPS-026 composite alerts. "
+                "Inject as ENTITY_INDEX_NAME env var into the Alert Generator Lambda."
+            ),
         )

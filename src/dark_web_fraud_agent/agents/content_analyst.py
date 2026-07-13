@@ -81,6 +81,12 @@ Extract entities of these types:
 - email: Email addresses
 - url: URLs or onion links
 - ip_address: IPv4 addresses
+- merchant_id: Merchant IDs (MID) — typically 15-digit numeric strings in payment fraud context
+- acquiring_bin: Acquiring bank BINs — 6-digit codes identifying payment processors
+- national_id: National identity numbers (UK NI format AA999999A, US SSN format NNN-NN-NNNN)
+- sort_code: UK bank sort codes (format NN-NN-NN or NNNNNN)
+- iban: International Bank Account Numbers (format CCddBBBBBBBBBBBBBBB)
+- monero_wallet: Monero wallet addresses (95-character strings starting with 4 or 8)
 
 For each entity, provide:
 - entity_type: one of the types listed above
@@ -117,9 +123,14 @@ Categories:
 3. phishing_kit - Phishing tools, kits, or templates targeting financial institutions
 4. cnp_fraud - Card-not-present fraud techniques (stolen card data, BIN attacks, online transaction fraud)
 5. account_takeover - Methods for taking over existing bank accounts (credential stuffing, session hijacking)
+6. new_account_fraud - Opening accounts using stolen Fullz or fabricated identities to commit fraud
+7. recurring_billing_fraud - Enrolling stolen cards in recurring subscriptions or small-amount billing schemes
+8. money_mule - Mule recruitment, reverse money mule schemes, unwitting account holders forwarding fraud proceeds
+9. investment_fraud - Fake investment platforms, pig-butchering schemes, fake crypto exchanges, HYIP scams
+10. social_engineering - Romance scripts, coached-secrecy guides, mule recruitment scripts, social manipulation
 
-If the content does NOT describe a bank security bypass technique, respond with:
-{{"category": null, "reasoning": "Not a bypass technique"}}
+If the content does NOT describe any of the above fraud types, respond with:
+{{"category": null, "reasoning": "Not a fraud technique"}}
 
 Otherwise respond ONLY with a JSON object:
 {{
@@ -149,14 +160,40 @@ Respond ONLY with this JSON structure:
   ],
   "affected_institutions": ["Bank A", "Bank B"],
   "estimated_record_count": null,
-  "fraud_category": "mfa_bypass|synthetic_identity|phishing_kit|cnp_fraud|account_takeover|null"
+  "fraud_category": "mfa_bypass|synthetic_identity|phishing_kit|cnp_fraud|account_takeover|new_account_fraud|recurring_billing_fraud|money_mule|investment_fraud|social_engineering|null"
 }}
 
 Fraud relevance criteria: MFA bypass, stolen credentials/Fullz, phishing kits, account takeover,
-synthetic identity, CNP fraud, BIN/SWIFT data, crypto wallets used for fraud proceeds.
-Fraud categories: mfa_bypass, synthetic_identity, phishing_kit, cnp_fraud, account_takeover.
+synthetic identity, CNP fraud, BIN/SWIFT data, crypto wallets used for fraud proceeds,
+fake investment platforms, romance/pig-butchering scripts, mule recruitment, recurring billing abuse.
+Fraud categories: mfa_bypass, synthetic_identity, phishing_kit, cnp_fraud, account_takeover,
+new_account_fraud, recurring_billing_fraud, money_mule, investment_fraud, social_engineering.
+Entity types: bank_name, bin_range, swift_code, btc_wallet, email, url, ip_address,
+merchant_id, acquiring_bin, national_id, sort_code, iban, monero_wallet.
 If content is not fraud-relevant, entities and fraud_category should be empty/null.
 Confidence < 0.7 indicates uncertainty — flag for manual review."""
+
+
+
+# ---------------------------------------------------------------------------
+# Coached-secrecy keyword override (XC-007 pig-butchering detection)
+# ---------------------------------------------------------------------------
+# When these phrases are present, force fraud_category = "social_engineering"
+# regardless of LLM classification — they are unambiguous pig-butchering markers.
+_COACHED_SECRECY_KEYWORDS = (
+    "don't tell your bank",
+    "dont tell your bank",
+    "they'll freeze your funds",
+    "they will freeze your funds",
+    "investment protection scheme",
+    "authorized push payment",
+    "tell them it's for",
+    "tell them its for",
+    "romance script",
+    "pig butcher",
+    "sha zhu pan",
+    "wrong number text",
+)
 
 
 # Regex patterns for fallback entity extraction
@@ -164,6 +201,10 @@ _BIN_PATTERN = re.compile(r'\b([3-6]\d{5})\b')
 _SWIFT_PATTERN = re.compile(r'\b([A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b')
 _BTC_BASE58_PATTERN = re.compile(r'\b([13][a-km-zA-HJ-NP-Z1-9]{25,34})\b')
 _BTC_BECH32_PATTERN = re.compile(r'\b(bc1[a-z0-9]{39,59})\b')
+_MONERO_PATTERN = re.compile(r'\b([48][0-9AB][1-9A-HJ-NP-Za-km-z]{93})\b')   # XMR standard address (95 chars)
+_IBAN_PATTERN = re.compile(r'\b([A-Z]{2}\d{2}[A-Z0-9]{4}\d{7,}(?:[A-Z0-9]?)*)\b')
+_SORT_CODE_PATTERN = re.compile(r'\b(\d{2}-\d{2}-\d{2}|\d{6})\b')
+_MID_PATTERN = re.compile(r'\b(\d{15})\b')                                   # ISO 8583 MID format
 _IPV4_PATTERN = re.compile(r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b')
 _EMAIL_PATTERN = re.compile(r'\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\b')
 _URL_PATTERN = re.compile(r'(https?://[^\s<>"]+|[a-z0-9\-]+\.onion(?:/[^\s<>"]*)?)')
@@ -388,6 +429,17 @@ class ContentAnalyst(AgentBase):
             except (ValueError, KeyError):
                 pass
         result["entities"] = hydrated
+
+        # Coached-secrecy keyword override: force social_engineering classification
+        # regardless of LLM output when unambiguous pig-butchering markers are present.
+        raw_snippet = text.lower()
+        if any(kw in raw_snippet for kw in _COACHED_SECRECY_KEYWORDS):
+            result["fraud_category"] = "social_engineering"
+            result["is_fraud_relevant"] = True
+            # Ensure confidence is high enough to skip manual-review flag
+            if result.get("confidence", 0.0) < 0.85:
+                result["confidence"] = 0.85
+
         return result
 
     def should_require_manual_review(self, confidence: float) -> bool:
@@ -612,6 +664,54 @@ class ContentAnalyst(AgentBase):
                 confidence=0.85,
             ))
 
+        # Extract Monero wallets (XMR — used in pig-butchering laundering chains)
+        for match in _MONERO_PATTERN.finditer(text):
+            value = match.group(1)
+            context = self._get_surrounding_context(text, match.start(), match.end())
+            entities.append(ExtractedEntity(
+                entity_type="monero_wallet",
+                value=value,
+                context=context,
+                confidence=0.85,
+            ))
+
+        # Extract IBANs (CHAPS-026 cross-border credential listings)
+        for match in _IBAN_PATTERN.finditer(text):
+            value = match.group(1)
+            if len(value) >= 15:  # Minimum valid IBAN length
+                context = self._get_surrounding_context(text, match.start(), match.end())
+                entities.append(ExtractedEntity(
+                    entity_type="iban",
+                    value=value,
+                    context=context,
+                    confidence=0.80,
+                ))
+
+        # Extract UK sort codes (Fullz / CHAPS credential listings — DC-007, CHAPS-026)
+        for match in _SORT_CODE_PATTERN.finditer(text):
+            value = match.group(1)
+            context = self._get_surrounding_context(text, match.start(), match.end())
+            # Only flag as sort_code when financial keywords are in context
+            if any(kw in context.lower() for kw in ("sort", "account", "bank", "fullz", "chaps")):
+                entities.append(ExtractedEntity(
+                    entity_type="sort_code",
+                    value=value,
+                    context=context,
+                    confidence=0.75,
+                ))
+
+        # Extract merchant IDs (PS-001 purchase scam MID watchlist anchor)
+        for match in _MID_PATTERN.finditer(text):
+            value = match.group(1)
+            context = self._get_surrounding_context(text, match.start(), match.end())
+            if any(kw in context.lower() for kw in ("mid", "merchant", "mid:", "acquir")):
+                entities.append(ExtractedEntity(
+                    entity_type="merchant_id",
+                    value=value,
+                    context=context,
+                    confidence=0.70,
+                ))
+
         return entities
 
     @staticmethod
@@ -780,6 +880,34 @@ class ContentAnalyst(AgentBase):
         # Clamp to [1, 10]
         return max(1, min(10, score))
 
+    # Record-count severity boost constants
+    _RECORD_COUNT_HIGH_THRESHOLD = 5_000   # +2 severity
+    _RECORD_COUNT_MED_THRESHOLD  = 1_000   # +1 severity
+
+    def adjust_severity_for_record_count(
+        self, severity: int, estimated_record_count: int | None
+    ) -> int:
+        """Boost severity score when a large-scale data dump is detected.
+
+        High-volume card dumps (DC-008) or large Fullz batches (DC-007) warrant
+        an immediate alert rather than waiting for campaign convergence.
+        A 10,000-card dump at DC-008 severity 6 becomes severity 8 (immediate alert).
+
+        Args:
+            severity: Base severity score from assign_severity().
+            estimated_record_count: Record count extracted from the listing, or None.
+
+        Returns:
+            Adjusted severity score clamped to [1, 10].
+        """
+        if estimated_record_count is None:
+            return severity
+        if estimated_record_count >= self._RECORD_COUNT_HIGH_THRESHOLD:
+            return min(10, severity + 2)
+        if estimated_record_count >= self._RECORD_COUNT_MED_THRESHOLD:
+            return min(10, severity + 1)
+        return severity
+
 
 # ---------------------------------------------------------------------------
 # Lambda entry point — invoked by Step Functions LambdaInvoke task state
@@ -841,6 +969,11 @@ def handler(event: dict, context) -> dict:
         raw_text_snippet=text[:500],
     )
     classification.severity_score = analyst.assign_severity(classification)
+    # Boost severity for large-volume dumps (DC-007/DC-008)
+    classification.severity_score = analyst.adjust_severity_for_record_count(
+        classification.severity_score,
+        result.get("estimated_record_count"),
+    )
 
     analyst.update_health(
         items_processed=1 if is_relevant else 0,

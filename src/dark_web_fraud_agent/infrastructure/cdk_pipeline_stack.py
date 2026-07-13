@@ -138,6 +138,15 @@ class DarkWebFraudPipelineStack(Stack):
             )
         )
 
+        # Inject GSI name so the Alert Generator Lambda can query entity co-occurrence
+        # without hardcoding the index name. The actual IAM Query permission on the GSI
+        # is granted in DarkWebFraudComputeStack via:
+        #   core_stack.convergence_table.grant_read_write_data(alert_generator_role)
+        # DynamoDB PAY_PER_REQUEST tables auto-include GSI permissions in grant_read_write_data.
+        alert_generator_fn.add_environment(
+            "ENTITY_INDEX_NAME", "entity-cooccurrence-index"
+        )
+
                 # =====================================================================
         # Step Functions — Express Workflow
         # Each agent is a Task state. Inputs and outputs follow the S3-key
@@ -258,11 +267,17 @@ class DarkWebFraudPipelineStack(Stack):
         alert_state = tasks.LambdaInvoke(
             self,
             "GenerateAlerts",
-            comment="Alert Generator — campaign convergence + SNS fan-out",
+            comment="Alert Generator — campaign convergence + SNS fan-out + entity co-occurrence",
             lambda_function=alert_generator_fn,
             payload=sfn.TaskInput.from_object({
                 "tagging_output": sfn.JsonPath.object_at("$.tagging_result.tagging_output"),
                 "execution_id": sfn.JsonPath.string_at("$$.Execution.Id"),
+                # Pass extracted entities so track_item() can index bank_name values
+                # for cross-entity co-occurrence detection (CHAPS-026 composite alert).
+                # Sourced from the Content Analyst output forwarded through the pipeline.
+                "entities": sfn.JsonPath.object_at(
+                    "$.analyst_result.analyst_output.entities"
+                ),
             }),
             result_selector={"alert_output.$": "$.Payload"},
             result_path="$.alert_result",
@@ -402,6 +417,27 @@ class DarkWebFraudPipelineStack(Stack):
             "PipelineDashboard",
             dashboard_name="DarkWebFraudPipeline",
         )
+        # Custom metrics published by the Alert Generator Lambda
+        cooccurrence_metric = cloudwatch.Metric(
+            namespace="dark-web-fraud",
+            metric_name="EntityCooccurrenceAlerts",
+            period=Duration.minutes(15),
+            statistic="Sum",
+            dimensions_map={"AlertType": "composite"},
+        )
+        ttp_convergence_metric = cloudwatch.Metric(
+            namespace="dark-web-fraud",
+            metric_name="TTPConvergenceAlerts",
+            period=Duration.minutes(15),
+            statistic="Sum",
+        )
+        immediate_alerts_metric = cloudwatch.Metric(
+            namespace="dark-web-fraud",
+            metric_name="ImmediateSeverityAlerts",
+            period=Duration.minutes(15),
+            statistic="Sum",
+        )
+
         self.dashboard.add_widgets(
             cloudwatch.Row(
                 cloudwatch.GraphWidget(
@@ -425,6 +461,18 @@ class DarkWebFraudPipelineStack(Stack):
                         ),
                     ],
                     width=12,
+                    height=6,
+                ),
+            ),
+            cloudwatch.Row(
+                cloudwatch.GraphWidget(
+                    title="Alert Generator — Alert Types (15-min windows)",
+                    left=[
+                        cooccurrence_metric,   # CHAPS-026 composite alerts
+                        ttp_convergence_metric,  # standard 3x TTP convergence
+                        immediate_alerts_metric, # high-severity immediate (≥7)
+                    ],
+                    width=24,
                     height=6,
                 ),
             ),

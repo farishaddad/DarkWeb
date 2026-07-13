@@ -9,6 +9,12 @@ _SIGMA_LOGSOURCE_MAP = {
     "T1078": {"category": "authentication"},
     "T1585": {"category": "network"},
     "T1539": {"category": "proxy"},
+    # Extended — new fraud categories
+    "T1136": {"category": "network", "service": "newaccountmonitoring"},
+    "T1499": {"category": "webserver"},
+    "T1531": {"category": "authentication"},
+    "T1583": {"category": "network"},
+    "T1598": {"category": "application"},
 }
 
 _SIGMA_TITLE_MAP = {
@@ -17,6 +23,12 @@ _SIGMA_TITLE_MAP = {
     "T1078": "Account Takeover via Valid Credentials",
     "T1585": "Synthetic Identity Account Creation",
     "T1539": "Card-Not-Present Session Cookie Theft",
+    # Extended — new fraud categories
+    "T1136": "New Account Fraud via Stolen Identity (Fullz)",
+    "T1499": "Recurring Billing Aggregation Fraud Detected",
+    "T1531": "Money Mule Network Activity Detected",
+    "T1583": "Investment Fraud / Fake Exchange Infrastructure",
+    "T1598": "Social Engineering — Romance Script / Pig Butchering",
 }
 
 
@@ -161,14 +173,31 @@ def handler(event: dict, context) -> dict:
         ttp_ref = attack_tags[0] if attack_tags else f"fraud:{fraud_category}"
 
         # Track this item for convergence (written to DynamoDB with TTL)
+        # Also index entity values for cross-entity co-occurrence (CHAPS-026)
+        entities_payload = event.get("entities", [])
         generator.track_item(
             stix_id=stix_bundle_key,
             ttp_reference=ttp_ref,
             tier=event.get("tier", "observable"),
+            entity_values=entities_payload,
         )
 
-        # Check convergence — or immediate alert on high severity
+        # Check TTP convergence — or immediate alert on high severity
         convergence_ids = generator.check_campaign_convergence(ttp_ref)
+
+        # Check cross-entity co-occurrence for CHAPS-026 composite alerts
+        if not convergence_ids:
+            for entity in entities_payload:
+                if entity.get("entity_type") == "bank_name":
+                    convergence_ids = generator.check_entity_cooccurrence(
+                        entity_type="bank_name",
+                        entity_value=entity["value"],
+                    )
+                    if convergence_ids:
+                        # Override TTP description to reflect composite signal
+                        fraud_category = f"{fraud_category}+cross_signal_cooccurrence"
+                        break
+
         immediate_alert = severity_score >= high_severity_threshold
 
         if convergence_ids or immediate_alert:
@@ -243,6 +272,8 @@ class AlertGenerator(AgentBase):
         self._convergence_tracker: dict[str, list[ConvergenceItem]] = {}
 
     def get_health(self) -> AgentHealth:
+        """Return the current health status of the Alert Generator."""
+        return self._health
 
     def _get_convergence_table(self):
         """Return the DynamoDB Table resource (env var injected by CDK)."""
@@ -250,11 +281,25 @@ class AlertGenerator(AgentBase):
         return boto3.resource("dynamodb").Table(table_name)
 
 
-    def track_item(self, stix_id: str, ttp_reference: str, tier: str) -> None:
+    def track_item(
+        self,
+        stix_id: str,
+        ttp_reference: str,
+        tier: str,
+        entity_values: list[dict] | None = None,
+    ) -> None:
         """Track an intelligence item in DynamoDB for campaign convergence.
 
         Items are written with a TTL so DynamoDB auto-expires them when the
         convergence window closes — no manual pruning needed.
+
+        Args:
+            stix_id: STIX bundle ID for this intelligence item.
+            ttp_reference: The ATT&CK technique / fraud category key used for convergence.
+            tier: Intelligence tier ("observable", "indicator", or "ttp").
+            entity_values: Optional list of extracted entity dicts
+                ({"entity_type": ..., "value": ...}) for cross-entity co-occurrence
+                tracking (CHAPS-026 pattern: credential listing + mule script same institution).
         """
         table = self._get_convergence_table()
         ttl = int((datetime.now(UTC) + self._convergence_window).timestamp())
@@ -268,6 +313,26 @@ class AlertGenerator(AgentBase):
             "TTL": ttl,
         })
 
+        # Cross-entity co-occurrence: index each bank_name entity independently.
+        # When the same institution appears in both a Source 1 credential listing
+        # and a Source 2 mule-recruitment post within the convergence window,
+        # a composite alert is generated linking both signals (CHAPS-026).
+        if entity_values:
+            for entity in entity_values:
+                if entity.get("entity_type") == "bank_name":
+                    bank_key = f"ENTITY#bank_name#{entity['value'].lower()}"
+                    table.put_item(Item={
+                        "PK": bank_key,
+                        "SK": f"ITEM#{stix_id}",
+                        "stix_id": stix_id,
+                        "ttp_reference": ttp_reference,
+                        "tier": tier,
+                        "entity_type": "bank_name",
+                        "entity_value": entity["value"].lower(),
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "TTL": ttl,
+                    })
+
     def check_campaign_convergence(self, ttp_reference: str) -> Optional[list[str]]:
         """Check if 3+ items reference the same TTP within the convergence window.
 
@@ -280,6 +345,43 @@ class AlertGenerator(AgentBase):
         )
         items = resp.get("Items", [])
         if len(items) >= 3:
+            return [item["stix_id"] for item in items]
+        return None
+
+    def check_entity_cooccurrence(self, entity_type: str, entity_value: str) -> Optional[list[str]]:
+        """Check whether the same entity appears in signals from multiple source tiers.
+
+        Implements cross-signal co-occurrence for CHAPS-026: detects when the same
+        institution name appears in both a Source 1 credential listing (tier=observable)
+        and a Source 2 mule-recruitment post (tier=ttp) within the convergence window.
+        Two or more signals across different tiers referencing the same entity triggers
+        a composite alert linking both intelligence layers.
+
+        Args:
+            entity_type: Entity type to check (currently only "bank_name" is indexed).
+            entity_value: The entity value to look up (case-insensitive).
+
+        Returns:
+            List of STIX IDs if cross-tier co-occurrence is detected (>=2 items
+            spanning at least 2 distinct tiers), otherwise None.
+        """
+        table = self._get_convergence_table()
+        # Use the GSI name from the environment variable so CDK can rotate the
+        # index name without a Lambda code change. Defaults to the name set
+        # in cdk_core_stack.py ("entity-cooccurrence-index").
+        index_name = os.environ.get("ENTITY_INDEX_NAME", "entity-cooccurrence-index")
+        resp = table.query(
+            IndexName=index_name,
+            KeyConditionExpression=Key("PK").eq(
+                f"ENTITY#{entity_type}#{entity_value.lower()}"
+            ),
+        )
+        items = resp.get("Items", [])
+        if len(items) < 2:
+            return None
+        # Require items from at least 2 distinct intelligence tiers
+        tiers = {item.get("tier") for item in items}
+        if len(tiers) >= 2:
             return [item["stix_id"] for item in items]
         return None
 

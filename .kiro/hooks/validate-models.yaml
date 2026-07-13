@@ -1,0 +1,25 @@
+# Hook: validate models on save
+# Triggered when: models/content_analyst.py is saved
+# Purpose: catch EntityType / VALID_FRAUD_CATEGORIES regressions immediately
+
+on_save:
+  match: "src/dark_web_fraud_agent/models/content_analyst.py"
+  run: |
+    python -c "
+    from dark_web_fraud_agent.models.content_analyst import EntityType, VALID_FRAUD_CATEGORIES
+    expected_entity_count = 13
+    expected_category_count = 10
+    actual_entity = len(EntityType)
+    actual_cats = len(VALID_FRAUD_CATEGORIES)
+    assert actual_entity == expected_entity_count, f'EntityType has {actual_entity} members, expected {expected_entity_count}'
+    assert actual_cats == expected_category_count, f'VALID_FRAUD_CATEGORIES has {actual_cats} entries, expected {expected_category_count}'
+    assert isinstance(VALID_FRAUD_CATEGORIES, tuple), 'VALID_FRAUD_CATEGORIES must be a tuple, not a list'
+    for required in ('new_account_fraud','recurring_billing_fraud','money_mule','investment_fraud','social_engineering'):
+        assert required in VALID_FRAUD_CATEGORIES, f'Missing category: {required}'
+    for required in ('MERCHANT_ID','MONERO_WALLET','IBAN','SORT_CODE','ACQUIRING_BIN','NATIONAL_ID'):
+        assert hasattr(EntityType, required), f'Missing EntityType member: {required}'
+    print('models/content_analyst.py hook: PASS')
+    "
+  on_failure: |
+    echo 'HOOK FAILED: models/content_analyst.py validation failed.'
+    echo 'Check EntityType count (expected 13) and VALID_FRAUD_CATEGORIES count (expected 10).'

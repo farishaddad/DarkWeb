@@ -26,6 +26,13 @@ class EntityType(str, Enum):
     EMAIL = "email"
     URL = "url"
     IP_ADDRESS = "ip_address"
+    # Extended entity types — added to support patterns DC-008, PS-001, CHAPS-026, XC-007
+    MERCHANT_ID = "merchant_id"         # ISO DF42 MID — PS-001 merchant watchlist anchor
+    ACQUIRING_BIN = "acquiring_bin"     # Acquiring bank BIN — PS-001 storefront detection
+    NATIONAL_ID = "national_id"         # NI / SSN in Fullz listings — DC-007
+    SORT_CODE = "sort_code"             # UK sort codes in Fullz / CHAPS credential listings
+    IBAN = "iban"                       # IBAN in cross-border CHAPS credential listings
+    MONERO_WALLET = "monero_wallet"     # XMR addresses in pig-butchering laundering chains
 
 
 # Valid fraud category values for ClassifiedContent.fraud_category
@@ -35,6 +42,12 @@ VALID_FRAUD_CATEGORIES = (
     "phishing_kit",
     "cnp_fraud",
     "account_takeover",
+    # Extended categories — added to support patterns DC-007, DC-008, CHAPS-026, XC-007
+    "new_account_fraud",       # T1136 — Create Account (DC-007 Fullz → new account opening)
+    "recurring_billing_fraud", # T1499 — Billing API abuse (DC-008 aggregation fraud)
+    "money_mule",              # T1531 — Account Access Removal (CHAPS-026 mule networks)
+    "investment_fraud",        # T1583.006 — Web Services (XC-007 fake exchange infra)
+    "social_engineering",      # T1598 — Phishing for Information (XC-007 romance scripts)
 )
 
 
