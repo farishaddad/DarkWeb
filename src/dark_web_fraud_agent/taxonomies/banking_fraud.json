@@ -1,0 +1,36 @@
+{
+  "namespace": "fraud",
+  "description": "Banking fraud classification taxonomy",
+  "version": 1,
+  "predicates": [
+    {"value": "type", "expanded": "Fraud Type"},
+    {"value": "target", "expanded": "Fraud Target"}
+  ],
+  "values": [
+    {
+      "predicate": "type",
+      "entry": [
+        {"value": "mfa_bypass", "expanded": "MFA Bypass"},
+        {"value": "synthetic_identity", "expanded": "Synthetic Identity"},
+        {"value": "phishing_kit", "expanded": "Phishing Kit"},
+        {"value": "card_not_present", "expanded": "Card Not Present Fraud"},
+        {"value": "account_takeover", "expanded": "Account Takeover"},
+        {"value": "fullz_trade", "expanded": "Fullz Trading"},
+        {"value": "bin_attack", "expanded": "BIN Attack"},
+        {"value": "money_mule", "expanded": "Money Mule Recruitment"},
+        {"value": "swift_transfer", "expanded": "Unauthorized SWIFT Transfer"},
+        {"value": "crypto_fraud", "expanded": "Cryptocurrency Fraud"}
+      ]
+    },
+    {
+      "predicate": "target",
+      "entry": [
+        {"value": "retail_bank", "expanded": "Retail Banking"},
+        {"value": "investment_bank", "expanded": "Investment Banking"},
+        {"value": "fintech", "expanded": "Financial Technology"},
+        {"value": "payment_processor", "expanded": "Payment Processor"},
+        {"value": "crypto_exchange", "expanded": "Cryptocurrency Exchange"}
+      ]
+    }
+  ]
+}

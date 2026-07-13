@@ -1,7 +1,7 @@
 """Unit tests for MISP-to-STIX export and create_misp_event."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 import stix2
 from pymisp import MISPEvent, MISPAttribute, MISPObject
 
@@ -47,7 +47,9 @@ class TestMispToStix:
         event.info = "Empty event"
         bundle = integration.misp_to_stix(event)
         assert isinstance(bundle, stix2.Bundle)
-        assert len(bundle.objects) == 0
+        # Empty bundle has no 'objects' attribute in stix2
+        objects = getattr(bundle, "objects", None) or []
+        assert len(objects) == 0
 
     def test_ip_src_attribute_becomes_ipv4_sco(self, integration):
         event = MISPEvent()
@@ -121,14 +123,15 @@ class TestMispToStix:
         event.add_attribute("text", "some random text")
         bundle = integration.misp_to_stix(event)
 
-        assert len(bundle.objects) == 0
+        objects = getattr(bundle, "objects", None) or []
+        assert len(objects) == 0
 
     def test_threat_actor_object_becomes_sdo(self, integration):
         event = MISPEvent()
         event.info = "Test"
-        misp_obj = MISPObject("threat-actor")
-        misp_obj.add_attribute("name", value="DarkFraudster")
-        misp_obj.add_attribute("description", value="A known threat actor")
+        misp_obj = MISPObject("threat-actor", standalone=True, strict=False)
+        misp_obj.add_attribute("name", type="text", value="DarkFraudster")
+        misp_obj.add_attribute("description", type="text", value="A known threat actor")
         event.add_object(misp_obj)
         bundle = integration.misp_to_stix(event)
 
@@ -141,8 +144,8 @@ class TestMispToStix:
     def test_attack_pattern_object_becomes_sdo(self, integration):
         event = MISPEvent()
         event.info = "Test"
-        misp_obj = MISPObject("attack-pattern")
-        misp_obj.add_attribute("name", value="MFA Bypass")
+        misp_obj = MISPObject("attack-pattern", standalone=True, strict=False)
+        misp_obj.add_attribute("name", type="text", value="MFA Bypass")
         event.add_object(misp_obj)
         bundle = integration.misp_to_stix(event)
 
@@ -156,8 +159,8 @@ class TestMispToStix:
         event.info = "Test"
         event.add_attribute("ip-src", "10.0.0.1")
         event.add_attribute("url", "http://test.onion")
-        misp_obj = MISPObject("threat-actor")
-        misp_obj.add_attribute("name", value="Actor1")
+        misp_obj = MISPObject("threat-actor", standalone=True, strict=False)
+        misp_obj.add_attribute("name", type="text", value="Actor1")
         event.add_object(misp_obj)
         bundle = integration.misp_to_stix(event)
 
@@ -171,12 +174,13 @@ class TestMispToStix:
     def test_unknown_object_type_skipped(self, integration):
         event = MISPEvent()
         event.info = "Test"
-        misp_obj = MISPObject("unknown-type-xyz")
-        misp_obj.add_attribute("name", value="Something")
+        misp_obj = MISPObject("unknown-type-xyz", standalone=True, strict=False)
+        misp_obj.add_attribute("name", type="text", value="Something")
         event.add_object(misp_obj)
         bundle = integration.misp_to_stix(event)
 
-        assert len(bundle.objects) == 0
+        objects = getattr(bundle, "objects", None) or []
+        assert len(objects) == 0
 
 
 class TestCreateMispEvent:
@@ -258,17 +262,13 @@ class TestCreateMispEvent:
             assert event_id == "10"
 
     @pytest.mark.asyncio
-    async def test_create_event_returns_error_string_on_exception(self, integration):
-        """Test that exceptions from the client return error-{uuid} string."""
+    async def test_create_event_raises_on_exception(self, integration):
+        """Test that exceptions from the client are re-raised."""
         mock_client = MagicMock()
         mock_client.add_event.side_effect = Exception("Connection refused")
         integration._misp_client = mock_client
 
         bundle = stix2.Bundle(objects=[stix2.IPv4Address(value="1.1.1.1")])
 
-        result = await integration.create_misp_event(bundle)
-        assert result.startswith("error-")
-        # Verify it's a valid UUID after the prefix
-        uuid_part = result[len("error-"):]
-        import uuid as uuid_mod
-        uuid_mod.UUID(uuid_part)  # Raises if invalid
+        with pytest.raises(Exception, match="Connection refused"):
+            await integration.create_misp_event(bundle)

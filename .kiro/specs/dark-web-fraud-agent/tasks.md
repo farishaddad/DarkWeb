@@ -39,7 +39,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Invalid configs (missing required fields) must raise validation error
     - **Validates: Requirements 1.6**
 
-- [ ] 2. Implement Crawling Engine Agent
+- [x] 2. Implement Crawling Engine Agent
   - [x] 2.1 Implement CrawlResult model and S3 artifact storage
     - Implement `CrawlResult` dataclass (source_url, source_category, raw_content, crawl_timestamp, proxy_identity, response_status, content_hash, s3_artifact_key, s3_annotation_id)
     - Implement `store_artifact()` method: upload raw content to S3, create S3 Annotation with source metadata
@@ -61,7 +61,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Implement Secrets Manager credential retrieval for proxy auth
     - _Requirements: 1.1, 1.4, 1.5_
 
-  - [-] 2.4 Implement crawl_source with retry logic and circuit breaker
+  - [x] 2.4 Implement crawl_source with retry logic and circuit breaker
     - Implement `crawl_source()`: connect via Tor, extract content, handle failures
     - Implement retry logic: rotate proxy on failure, retry up to max_retries (default 3)
     - Implement `CircuitBreakerState` with DynamoDB-backed state (consecutive_failures, state, recovery_timeout)
@@ -75,13 +75,13 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Assert each retry uses a different proxy identity
     - **Validates: Requirements 1.4**
 
-  - [~] 2.6 Implement agent health reporting and DynamoDB state tracking
+  - [x] 2.6 Implement agent health reporting and DynamoDB state tracking
     - Implement `get_health()` returning AgentHealth with throughput, error_rate, queue_depth
     - Implement DynamoDB state writes for crawl tracking (last_crawl_timestamp, last_content_hash, next_crawl_due)
     - Implement `start()` and `stop()` lifecycle methods
     - _Requirements: 8.5, 1.2_
 
-- [~] 3. Checkpoint - Ensure all tests pass
+- [ ] 3. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 4. Implement Content Analyst Agent
@@ -182,17 +182,17 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Assert link chain is traversable with valid references at each step
     - **Validates: Requirements 6.5**
 
-  - [~] 5.8 Implement OpenSearch Serverless vector indexing
+  - [ ] 5.8 Implement OpenSearch Serverless vector indexing
     - Implement `index_to_opensearch()`: generate embeddings via Bedrock, index into VECTORSEARCH collection
     - Create index mapping with knn_vector field (dimension 1024, HNSW, cosine similarity)
     - Index STIX objects with metadata (stix_id, tier, severity, fraud_category, entities, tags)
     - _Requirements: 3.1, 6.5_
 
-- [~] 6. Checkpoint - Ensure all tests pass
+- [ ] 6. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 7. Implement Data Structurer Agent - MISP Integration
-  - [~] 7.1 Implement STIX-to-MISP conversion
+  - [ ] 7.1 Implement STIX-to-MISP conversion
     - Implement `stix_to_misp()`: convert STIX Bundle to MISP event with attributes and object references
     - Map STIX SCOs to MISP attribute types (ipv4-addr→ip-src, url→url, email-addr→email-src, domain-name→domain, artifact/btc→btc)
     - Assign organization context and distribution level based on sensitivity
@@ -204,7 +204,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Assert mapped MISP attribute type matches defined mapping
     - **Validates: Requirements 4.2**
 
-  - [~] 7.3 Implement MISP-to-STIX export and round-trip
+  - [x] 7.3 Implement MISP-to-STIX export and round-trip
     - Implement `misp_to_stix()`: export MISP event back to STIX 2.1 Bundle
     - Implement `create_misp_event()`: create event via PyMISP REST API with validation error handling and retry
     - _Requirements: 4.4, 4.5_
@@ -217,7 +217,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - **Validates: Requirements 4.1, 4.4**
 
 - [ ] 8. Implement Tagging Engine Agent
-  - [~] 8.1 Implement taxonomy loading and validation
+  - [x] 8.1 Implement taxonomy loading and validation
     - Implement `load_taxonomy()`: parse JSON taxonomy definitions with namespace, predicates, entries
     - Implement custom banking fraud taxonomy schema (fraud:type, fraud:target predicates)
     - Load MITRE ATT&CK STIX data from S3 for technique matching
@@ -231,7 +231,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Assert invalid JSON rejected with parse error
     - **Validates: Requirements 5.6**
 
-  - [~] 8.3 Implement severity-to-threat-level mapping and tag application
+  - [ ] 8.3 Implement severity-to-threat-level mapping and tag application
     - Implement `map_severity_to_threat_level()`: 1-3→low, 4-6→medium, 7-9→high, 10→critical
     - Implement `apply_attack_tags()`: match content to MITRE ATT&CK techniques
     - Implement `apply_fraud_tags()`: apply `fraud:type="<category>"` tags for banking keywords
@@ -249,7 +249,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Assert at least one tag in format `fraud:type="<category>"` where category is valid taxonomy value
     - **Validates: Requirements 5.2**
 
-  - [~] 8.6 Implement Galaxy cluster matching and unmatched content handling
+  - [ ] 8.6 Implement Galaxy cluster matching and unmatched content handling
     - Implement `match_galaxy_cluster()`: query AgentCore Knowledge Base (Agentic Retriever) for threat actor matching
     - Link events to corresponding MISP Galaxy clusters when actors match known profiles
     - Apply `requires-review` tag when event doesn't match any taxonomy predicate
@@ -262,7 +262,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Assert `requires-review` tag is applied
     - **Validates: Requirements 5.5**
 
-- [~] 9. Checkpoint - Ensure all tests pass
+- [ ] 9. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 10. Implement Alert Generator Agent
@@ -285,7 +285,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Assert non-empty original_source_url, valid crawl_timestamp preceding alert creation, valid S3 artifact key
     - **Validates: Requirements 7.4**
 
-  - [~] 10.4 Implement campaign convergence detection
+  - [ ] 10.4 Implement campaign convergence detection
     - Implement `check_campaign_convergence()`: query OpenSearch vector similarity for related items
     - Track convergence in DynamoDB with TTL-based time window expiry
     - Generate consolidated campaign alert when 3+ related items converge around common TTP
@@ -297,7 +297,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Assert consolidated campaign alert produced linking all related intelligence item IDs
     - **Validates: Requirements 7.3**
 
-  - [~] 10.6 Implement alert publishing and summary digest generation
+  - [ ] 10.6 Implement alert publishing and summary digest generation
     - Implement `publish_alert()`: publish to SNS topic, return message ID
     - Implement `format_for_api()`: format alert for downstream fraud detection system integration
     - Implement `generate_summary_digest()`: produce periodic digest of low/medium findings when no high-severity intel found
@@ -305,7 +305,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - _Requirements: 7.2, 7.5_
 
 - [ ] 11. Implement Step Functions Pipeline Orchestration
-  - [~] 11.1 Implement PipelineOrchestrator and inter-agent message passing
+  - [ ] 11.1 Implement PipelineOrchestrator and inter-agent message passing
     - Implement `PipelineOrchestrator` class with Step Functions state machine integration
     - Implement `start_execution()`: invoke state machine with input payload, return execution ARN
     - Implement `get_execution_status()`: query execution history and current state
@@ -320,14 +320,14 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Assert all fields preserved through orchestration layer
     - **Validates: Requirements 8.2**
 
-  - [~] 11.3 Implement agent fault isolation and health monitoring
+  - [ ] 11.3 Implement agent fault isolation and health monitoring
     - Implement per-agent error handling: isolate failures, continue processing with remaining agents
     - Implement Step Functions retry configuration (exponential backoff per state)
     - Implement dead-letter queue routing for failed items (SQS DLQ)
     - Implement health aggregation: collect per-agent AgentHealth, expose pipeline-level status
     - _Requirements: 8.3, 8.5_
 
-  - [~] 11.4 Implement EventBridge scheduling and initialization
+  - [ ] 11.4 Implement EventBridge scheduling and initialization
     - Implement EventBridge rule for cron-based crawl cycle triggering
     - Implement agent initialization in dependency order (Crawling Engine first, then downstream)
     - Verify inter-agent connectivity before beginning crawl operations
@@ -335,7 +335,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - _Requirements: 8.4, 1.2_
 
 - [ ] 12. Implement AWS Infrastructure (CDK)
-  - [~] 12.1 Create CDK stack for core infrastructure
+  - [ ] 12.1 Create CDK stack for core infrastructure
     - Define VPC with isolated subnet for Tor proxy (NAT Gateway → Tor SOCKS5)
     - Define S3 bucket with Annotations enabled for raw artifact storage
     - Define DynamoDB tables (Agent State, Crawl State, Campaign Convergence) with TTL
@@ -343,14 +343,14 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Define IAM roles with least-privilege policies per agent
     - _Requirements: 1.1, 8.1_
 
-  - [~] 12.2 Create CDK stack for intelligence infrastructure
+  - [ ] 12.2 Create CDK stack for intelligence infrastructure
     - Define OpenSearch Serverless VECTORSEARCH collection with GPU acceleration
     - Define OpenSearch index template with knn_vector mapping (dimension 1024, HNSW, cosine)
     - Define AgentCore Managed Knowledge Base with Smart Parsing
     - Define Bedrock Guardrails configuration (prompt injection, harmful content, sensitive data)
     - _Requirements: 3.1, 5.4_
 
-  - [~] 12.3 Create CDK stack for pipeline orchestration
+  - [ ] 12.3 Create CDK stack for pipeline orchestration
     - Define Step Functions state machine with agent invocation steps
     - Define EventBridge rule for scheduled crawl triggers
     - Define SNS topic and SQS queues for alert distribution
@@ -359,7 +359,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - _Requirements: 8.1, 8.2, 7.2_
 
 - [ ] 13. Wire all components together and validate end-to-end flow
-  - [~] 13.1 Implement full pipeline integration
+  - [ ] 13.1 Implement full pipeline integration
     - Wire CrawlingEngine output → ContentAnalyst input
     - Wire ContentAnalyst output → DataStructurer input
     - Wire DataStructurer output → TaggingEngine input
@@ -375,7 +375,7 @@ This implementation plan builds the multi-agent dark web fraud intelligence syst
     - Test SNS alert delivery to downstream consumers
     - _Requirements: 8.1, 8.2, 8.3, 7.3_
 
-- [~] 14. Final checkpoint - Ensure all tests pass
+- [ ] 14. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

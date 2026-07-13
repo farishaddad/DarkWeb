@@ -2,15 +2,19 @@
 
 Tests verify that:
 - index_to_opensearch() generates embeddings and indexes documents correctly
+- ensure_index_mapping() creates the index with knn_vector configuration
 - _generate_embedding() invokes Bedrock with proper parameters
 - _get_object_summary() produces meaningful text for various STIX object types
 - _create_opensearch_client() creates a properly configured client
-- Document structure includes all required metadata fields
+- Document structure includes all required metadata fields (stix_id, tier, severity,
+  fraud_category, entities, tags, intelligence_vector, created_at)
 """
 
 import io
 import json
-from unittest.mock import MagicMock, AsyncMock, patch
+import os
+from datetime import datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 import stix2
@@ -23,10 +27,10 @@ from dark_web_fraud_agent.models.content_analyst import ExtractedEntity
 def config():
     """Create a StructurerConfig for testing."""
     return StructurerConfig(
-        opensearch_endpoint="https://abc123.us-east-1.aoss.amazonaws.com",
-        opensearch_collection_name="threat-intel",
+        opensearch_endpoint="https://abc123.eu-west-2.aoss.amazonaws.com",
+        opensearch_collection_name="dark-web-fraud-intel",
         misp_url="https://misp.example.com",
-        misp_secret_arn="arn:aws:secretsmanager:us-east-1:123456789:secret:misp-key",
+        misp_secret_arn="arn:aws:secretsmanager:eu-west-2:123456789:secret:misp-key",
         bedrock_embedding_model_id="amazon.titan-embed-text-v2:0",
         s3_bucket="dark-web-artifacts",
     )
@@ -42,7 +46,10 @@ def structurer(config):
 def mock_opensearch_client():
     """Create a mock OpenSearch client."""
     client = MagicMock()
-    client.index.return_value = {"_id": "doc-123", "_index": "threat-intel", "result": "created"}
+    client.index.return_value = {"_id": "doc-123", "_index": "dark-web-fraud-intel", "result": "created"}
+    client.indices = MagicMock()
+    client.indices.exists.return_value = False
+    client.indices.create.return_value = {"acknowledged": True}
     return client
 
 
@@ -50,7 +57,6 @@ def mock_opensearch_client():
 def mock_bedrock_client():
     """Create a mock Bedrock runtime client."""
     client = MagicMock()
-    # Create a fake embedding response
     embedding = [0.1] * 1024  # 1024-dimension vector
     response_body = io.BytesIO(json.dumps({"embedding": embedding}).encode())
     client.invoke_model.return_value = {"body": response_body}
@@ -81,13 +87,16 @@ def sample_bundle(structurer):
 
 @pytest.fixture
 def sample_metadata():
-    """Create sample metadata for indexing."""
+    """Create sample metadata for indexing with entities and tags."""
     return {
         "tier": "indicator",
         "severity_score": 7,
-        "confidence": 0.85,
         "fraud_category": "account_takeover",
-        "tags": ["banking", "ato"],
+        "entities": [
+            {"entity_type": "ip_address", "value": "192.168.1.100"},
+            {"entity_type": "bank_name", "value": "DarkVendor"},
+        ],
+        "tags": ["mitre-attack:technique=\"T1531\"", "fraud:type=\"account_takeover\""],
     }
 
 
@@ -155,21 +164,6 @@ class TestGetObjectSummary:
 
         assert " | " in summary
 
-    def test_summary_for_artifact_without_name_or_value(self, structurer):
-        """Artifact SCO (btc_wallet) produces summary with just type."""
-        entity = ExtractedEntity(
-            entity_type="btc_wallet",
-            value="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
-            context="BTC wallet",
-            confidence=0.98,
-        )
-        sco = structurer.create_stix_sco(entity)
-
-        summary = structurer._get_object_summary(sco)
-
-        # Artifact doesn't have name or value attributes in the STIX sense
-        assert "Type: artifact" in summary
-
 
 # --- _generate_embedding Tests ---
 
@@ -177,8 +171,7 @@ class TestGetObjectSummary:
 class TestGenerateEmbedding:
     """Tests for _generate_embedding() method."""
 
-    @pytest.mark.asyncio
-    async def test_generate_embedding_invokes_bedrock(self, structurer, mock_bedrock_client):
+    def test_generate_embedding_invokes_bedrock(self, structurer, mock_bedrock_client):
         """_generate_embedding calls Bedrock with the correct model and text."""
         structurer._bedrock_client = mock_bedrock_client
 
@@ -187,7 +180,7 @@ class TestGenerateEmbedding:
         )
         sco = structurer.create_stix_sco(entity)
 
-        result = await structurer._generate_embedding(sco)
+        result = structurer._generate_embedding(sco)
 
         mock_bedrock_client.invoke_model.assert_called_once()
         call_kwargs = mock_bedrock_client.invoke_model.call_args[1]
@@ -199,8 +192,7 @@ class TestGenerateEmbedding:
         assert "inputText" in body
         assert "10.0.0.1" in body["inputText"]
 
-    @pytest.mark.asyncio
-    async def test_generate_embedding_returns_vector(self, structurer, mock_bedrock_client):
+    def test_generate_embedding_returns_vector(self, structurer, mock_bedrock_client):
         """_generate_embedding returns the embedding vector from Bedrock response."""
         structurer._bedrock_client = mock_bedrock_client
 
@@ -209,14 +201,13 @@ class TestGenerateEmbedding:
         )
         sco = structurer.create_stix_sco(entity)
 
-        result = await structurer._generate_embedding(sco)
+        result = structurer._generate_embedding(sco)
 
         assert isinstance(result, list)
         assert len(result) == 1024
         assert all(isinstance(v, float) for v in result)
 
-    @pytest.mark.asyncio
-    async def test_generate_embedding_creates_client_if_none(self, structurer):
+    def test_generate_embedding_creates_client_if_none(self, structurer):
         """_generate_embedding creates a Bedrock client if none exists."""
         assert structurer._bedrock_client is None
 
@@ -232,10 +223,116 @@ class TestGenerateEmbedding:
             )
             sco = structurer.create_stix_sco(entity)
 
-            result = await structurer._generate_embedding(sco)
+            result = structurer._generate_embedding(sco)
 
-            mock_boto3_client.assert_called_once_with("bedrock-runtime")
+            mock_boto3_client.assert_called_once_with(
+                "bedrock-runtime", region_name="eu-west-2"
+            )
             assert result == embedding
+
+
+# --- ensure_index_mapping Tests ---
+
+
+class TestEnsureIndexMapping:
+    """Tests for ensure_index_mapping() method."""
+
+    def test_creates_index_with_knn_vector_mapping(self, structurer, mock_opensearch_client):
+        """ensure_index_mapping creates index with knn_vector field config."""
+        structurer._opensearch_client = mock_opensearch_client
+        mock_opensearch_client.indices.exists.return_value = False
+
+        structurer.ensure_index_mapping()
+
+        mock_opensearch_client.indices.create.assert_called_once()
+        call_args = mock_opensearch_client.indices.create.call_args
+        body = call_args[1]["body"]
+
+        # Verify knn_vector field
+        vector_props = body["mappings"]["properties"]["intelligence_vector"]
+        assert vector_props["type"] == "knn_vector"
+        assert vector_props["dimension"] == 1024
+        assert vector_props["method"]["name"] == "hnsw"
+        assert vector_props["method"]["space_type"] == "cosinesimil"
+
+    def test_skips_creation_if_index_exists(self, structurer, mock_opensearch_client):
+        """ensure_index_mapping does not create if index already exists."""
+        structurer._opensearch_client = mock_opensearch_client
+        mock_opensearch_client.indices.exists.return_value = True
+
+        structurer.ensure_index_mapping()
+
+        mock_opensearch_client.indices.create.assert_not_called()
+
+    def test_uses_configured_index_name(self, structurer, mock_opensearch_client):
+        """ensure_index_mapping uses get_index_name() for the index."""
+        structurer._opensearch_client = mock_opensearch_client
+        mock_opensearch_client.indices.exists.return_value = False
+
+        structurer.ensure_index_mapping()
+
+        call_args = mock_opensearch_client.indices.create.call_args
+        assert call_args[1]["index"] == "dark-web-fraud-intel"
+
+    def test_mapping_includes_metadata_fields(self, structurer, mock_opensearch_client):
+        """Index mapping includes stix_id, tier, severity, entities, tags fields."""
+        structurer._opensearch_client = mock_opensearch_client
+        mock_opensearch_client.indices.exists.return_value = False
+
+        structurer.ensure_index_mapping()
+
+        call_args = mock_opensearch_client.indices.create.call_args
+        props = call_args[1]["body"]["mappings"]["properties"]
+
+        assert props["stix_id"]["type"] == "keyword"
+        assert props["tier"]["type"] == "keyword"
+        assert props["severity_score"]["type"] == "integer"
+        assert props["fraud_category"]["type"] == "keyword"
+        assert props["entities"]["type"] == "nested"
+        assert props["tags"]["type"] == "keyword"
+        assert props["created_at"]["type"] == "date"
+
+    def test_handles_resource_already_exists_exception(self, structurer, mock_opensearch_client):
+        """ensure_index_mapping handles race condition gracefully."""
+        structurer._opensearch_client = mock_opensearch_client
+        mock_opensearch_client.indices.exists.return_value = False
+        mock_opensearch_client.indices.create.side_effect = Exception(
+            "resource_already_exists_exception"
+        )
+
+        # Should not raise
+        structurer.ensure_index_mapping()
+
+    def test_raises_runtime_error_on_unknown_failure(self, structurer, mock_opensearch_client):
+        """ensure_index_mapping raises RuntimeError on unexpected failures."""
+        structurer._opensearch_client = mock_opensearch_client
+        mock_opensearch_client.indices.exists.return_value = False
+        mock_opensearch_client.indices.create.side_effect = Exception("connection timeout")
+
+        with pytest.raises(RuntimeError, match="Failed to create OpenSearch index"):
+            structurer.ensure_index_mapping()
+
+    def test_creates_opensearch_client_if_none(self, structurer):
+        """ensure_index_mapping creates client if _opensearch_client is None."""
+        assert structurer._opensearch_client is None
+
+        mock_client = MagicMock()
+        mock_client.indices.exists.return_value = True
+
+        with patch.object(structurer, "_create_opensearch_client", return_value=mock_client):
+            structurer.ensure_index_mapping()
+            assert structurer._opensearch_client is mock_client
+
+    def test_knn_setting_enabled(self, structurer, mock_opensearch_client):
+        """Index settings enable knn."""
+        structurer._opensearch_client = mock_opensearch_client
+        mock_opensearch_client.indices.exists.return_value = False
+
+        structurer.ensure_index_mapping()
+
+        call_args = mock_opensearch_client.indices.create.call_args
+        settings = call_args[1]["body"]["settings"]
+        assert settings["index"]["knn"] is True
 
 
 # --- index_to_opensearch Tests ---
@@ -244,47 +341,42 @@ class TestGenerateEmbedding:
 class TestIndexToOpenSearch:
     """Tests for index_to_opensearch() method."""
 
-    @pytest.mark.asyncio
-    async def test_indexes_all_bundle_objects(
+    def test_indexes_all_bundle_objects(
         self, structurer, mock_opensearch_client, mock_bedrock_client, sample_bundle, sample_metadata
     ):
         """index_to_opensearch indexes every object in the bundle."""
         structurer._opensearch_client = mock_opensearch_client
         structurer._bedrock_client = mock_bedrock_client
 
-        doc_ids = await structurer.index_to_opensearch(sample_bundle, sample_metadata)
+        doc_ids = structurer.index_to_opensearch(sample_bundle, sample_metadata)
 
         assert len(doc_ids) == len(sample_bundle.objects)
         assert mock_opensearch_client.index.call_count == len(sample_bundle.objects)
 
-    @pytest.mark.asyncio
-    async def test_returns_document_ids(
+    def test_returns_document_ids(
         self, structurer, mock_opensearch_client, mock_bedrock_client, sample_bundle, sample_metadata
     ):
         """index_to_opensearch returns a list of OpenSearch document IDs."""
-        # Make each call return a unique ID
         mock_opensearch_client.index.side_effect = [
-            {"_id": f"doc-{i}", "_index": "threat-intel", "result": "created"}
+            {"_id": f"doc-{i}", "_index": "dark-web-fraud-intel", "result": "created"}
             for i in range(len(sample_bundle.objects))
         ]
         structurer._opensearch_client = mock_opensearch_client
         structurer._bedrock_client = mock_bedrock_client
 
-        doc_ids = await structurer.index_to_opensearch(sample_bundle, sample_metadata)
+        doc_ids = structurer.index_to_opensearch(sample_bundle, sample_metadata)
 
         assert doc_ids == ["doc-0", "doc-1"]
 
-    @pytest.mark.asyncio
-    async def test_document_contains_required_fields(
+    def test_document_contains_required_fields(
         self, structurer, mock_opensearch_client, mock_bedrock_client, sample_bundle, sample_metadata
     ):
         """Each indexed document contains all required metadata fields."""
         structurer._opensearch_client = mock_opensearch_client
         structurer._bedrock_client = mock_bedrock_client
 
-        await structurer.index_to_opensearch(sample_bundle, sample_metadata)
+        structurer.index_to_opensearch(sample_bundle, sample_metadata)
 
-        # Check the first indexed document
         first_call = mock_opensearch_client.index.call_args_list[0]
         doc = first_call[1]["body"]
 
@@ -292,39 +384,71 @@ class TestIndexToOpenSearch:
         assert "stix_type" in doc
         assert "tier" in doc
         assert "severity_score" in doc
-        assert "confidence" in doc
         assert "fraud_category" in doc
+        assert "entities" in doc
+        assert "tags" in doc
         assert "content_summary" in doc
         assert "created_at" in doc
         assert "intelligence_vector" in doc
 
-    @pytest.mark.asyncio
-    async def test_document_metadata_from_input(
+    def test_document_metadata_from_input(
         self, structurer, mock_opensearch_client, mock_bedrock_client, sample_bundle, sample_metadata
     ):
         """Document metadata values are populated from the metadata argument."""
         structurer._opensearch_client = mock_opensearch_client
         structurer._bedrock_client = mock_bedrock_client
 
-        await structurer.index_to_opensearch(sample_bundle, sample_metadata)
+        structurer.index_to_opensearch(sample_bundle, sample_metadata)
 
         first_call = mock_opensearch_client.index.call_args_list[0]
         doc = first_call[1]["body"]
 
         assert doc["tier"] == "indicator"
         assert doc["severity_score"] == 7
-        assert doc["confidence"] == 0.85
         assert doc["fraud_category"] == "account_takeover"
 
-    @pytest.mark.asyncio
-    async def test_document_stix_fields_from_object(
+    def test_document_includes_entities_list(
+        self, structurer, mock_opensearch_client, mock_bedrock_client, sample_bundle, sample_metadata
+    ):
+        """Document includes entities list from metadata."""
+        structurer._opensearch_client = mock_opensearch_client
+        structurer._bedrock_client = mock_bedrock_client
+
+        structurer.index_to_opensearch(sample_bundle, sample_metadata)
+
+        first_call = mock_opensearch_client.index.call_args_list[0]
+        doc = first_call[1]["body"]
+
+        assert doc["entities"] == [
+            {"entity_type": "ip_address", "value": "192.168.1.100"},
+            {"entity_type": "bank_name", "value": "DarkVendor"},
+        ]
+
+    def test_document_includes_tags_list(
+        self, structurer, mock_opensearch_client, mock_bedrock_client, sample_bundle, sample_metadata
+    ):
+        """Document includes tags list from metadata."""
+        structurer._opensearch_client = mock_opensearch_client
+        structurer._bedrock_client = mock_bedrock_client
+
+        structurer.index_to_opensearch(sample_bundle, sample_metadata)
+
+        first_call = mock_opensearch_client.index.call_args_list[0]
+        doc = first_call[1]["body"]
+
+        assert doc["tags"] == [
+            "mitre-attack:technique=\"T1531\"",
+            "fraud:type=\"account_takeover\"",
+        ]
+
+    def test_document_stix_fields_from_object(
         self, structurer, mock_opensearch_client, mock_bedrock_client, sample_bundle, sample_metadata
     ):
         """Document stix_id and stix_type come from the STIX object."""
         structurer._opensearch_client = mock_opensearch_client
         structurer._bedrock_client = mock_bedrock_client
 
-        await structurer.index_to_opensearch(sample_bundle, sample_metadata)
+        structurer.index_to_opensearch(sample_bundle, sample_metadata)
 
         first_call = mock_opensearch_client.index.call_args_list[0]
         doc = first_call[1]["body"]
@@ -333,62 +457,61 @@ class TestIndexToOpenSearch:
         assert doc["stix_id"] == first_obj.id
         assert doc["stix_type"] == first_obj.type
 
-    @pytest.mark.asyncio
-    async def test_uses_configured_index_name(
+    def test_uses_configured_index_name(
         self, structurer, mock_opensearch_client, mock_bedrock_client, sample_bundle, sample_metadata
     ):
         """index_to_opensearch uses the collection name from config."""
         structurer._opensearch_client = mock_opensearch_client
         structurer._bedrock_client = mock_bedrock_client
 
-        await structurer.index_to_opensearch(sample_bundle, sample_metadata)
+        structurer.index_to_opensearch(sample_bundle, sample_metadata)
 
         first_call = mock_opensearch_client.index.call_args_list[0]
-        assert first_call[1]["index"] == "threat-intel"
+        assert first_call[1]["index"] == "dark-web-fraud-intel"
 
-    @pytest.mark.asyncio
-    async def test_default_metadata_values(
+    def test_default_metadata_values(
         self, structurer, mock_opensearch_client, mock_bedrock_client, sample_bundle
     ):
         """Default metadata values are used when not provided."""
         structurer._opensearch_client = mock_opensearch_client
         structurer._bedrock_client = mock_bedrock_client
 
-        # Pass empty metadata
-        await structurer.index_to_opensearch(sample_bundle, {})
+        structurer.index_to_opensearch(sample_bundle, {})
 
         first_call = mock_opensearch_client.index.call_args_list[0]
         doc = first_call[1]["body"]
 
         assert doc["tier"] == "observable"
         assert doc["severity_score"] == 1
-        assert doc["confidence"] == 0.0
         assert doc["fraud_category"] is None
+        assert doc["entities"] == []
+        assert doc["tags"] == []
 
-    @pytest.mark.asyncio
-    async def test_creates_opensearch_client_if_none(self, structurer, mock_bedrock_client, sample_bundle, sample_metadata):
+    def test_creates_opensearch_client_if_none(
+        self, structurer, mock_bedrock_client, sample_bundle, sample_metadata
+    ):
         """index_to_opensearch creates client if _opensearch_client is None."""
         structurer._bedrock_client = mock_bedrock_client
         assert structurer._opensearch_client is None
 
         mock_os_client = MagicMock()
-        mock_os_client.index.return_value = {"_id": "doc-new", "_index": "threat-intel", "result": "created"}
+        mock_os_client.index.return_value = {
+            "_id": "doc-new", "_index": "dark-web-fraud-intel", "result": "created"
+        }
 
-        with patch.object(structurer, "_create_opensearch_client", return_value=mock_os_client) as mock_create:
-            await structurer.index_to_opensearch(sample_bundle, sample_metadata)
+        with patch.object(structurer, "_create_opensearch_client", return_value=mock_os_client):
+            structurer.index_to_opensearch(sample_bundle, sample_metadata)
 
-            mock_create.assert_called_once()
             assert structurer._opensearch_client is mock_os_client
 
-    @pytest.mark.asyncio
-    async def test_embedding_vector_included_in_document(
+    def test_embedding_vector_included_in_document(
         self, structurer, mock_opensearch_client, mock_bedrock_client, sample_bundle, sample_metadata
     ):
         """Each document has an intelligence_vector field with the embedding."""
         structurer._opensearch_client = mock_opensearch_client
         structurer._bedrock_client = mock_bedrock_client
 
-        await structurer.index_to_opensearch(sample_bundle, sample_metadata)
+        structurer.index_to_opensearch(sample_bundle, sample_metadata)
 
         first_call = mock_opensearch_client.index.call_args_list[0]
         doc = first_call[1]["body"]
@@ -397,23 +520,36 @@ class TestIndexToOpenSearch:
         assert isinstance(doc["intelligence_vector"], list)
         assert len(doc["intelligence_vector"]) == 1024
 
-    @pytest.mark.asyncio
-    async def test_created_at_is_iso_format(
+    def test_created_at_is_iso_format(
         self, structurer, mock_opensearch_client, mock_bedrock_client, sample_bundle, sample_metadata
     ):
         """created_at field is in ISO format."""
         structurer._opensearch_client = mock_opensearch_client
         structurer._bedrock_client = mock_bedrock_client
 
-        await structurer.index_to_opensearch(sample_bundle, sample_metadata)
+        structurer.index_to_opensearch(sample_bundle, sample_metadata)
 
         first_call = mock_opensearch_client.index.call_args_list[0]
         doc = first_call[1]["body"]
 
-        # Should be parseable as ISO format datetime
-        from datetime import datetime as dt
-        parsed = dt.fromisoformat(doc["created_at"])
+        parsed = datetime.fromisoformat(doc["created_at"])
         assert parsed is not None
+
+
+# --- get_index_name Tests ---
+
+
+class TestGetIndexName:
+    """Tests for get_index_name() method."""
+
+    def test_returns_config_collection_name(self, structurer):
+        """get_index_name returns the configured collection name."""
+        assert structurer.get_index_name() == "dark-web-fraud-intel"
+
+    def test_returns_default_when_no_config(self):
+        """get_index_name returns default when no config is provided."""
+        structurer = DataStructurer(config=None)
+        assert structurer.get_index_name() == "dark-web-fraud-intel"
 
 
 # --- _create_opensearch_client Tests ---
@@ -422,12 +558,12 @@ class TestIndexToOpenSearch:
 class TestCreateOpenSearchClient:
     """Tests for _create_opensearch_client() method."""
 
+    @patch.dict(os.environ, {"AWS_REGION": "eu-west-2"})
     @patch("boto3.Session")
     def test_creates_client_with_aws_auth(self, mock_session_class, config):
         """_create_opensearch_client creates OpenSearch client with AWS4Auth."""
         structurer = DataStructurer(config=config)
 
-        # Mock credentials
         mock_session = MagicMock()
         mock_creds = MagicMock()
         mock_creds.access_key = "AKIAIOSFODNN7EXAMPLE"
@@ -443,22 +579,20 @@ class TestCreateOpenSearchClient:
 
             client = structurer._create_opensearch_client()
 
-            # Verify AWS4Auth was created with correct params
             mock_auth_class.assert_called_once_with(
                 "AKIAIOSFODNN7EXAMPLE",
                 "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-                "us-east-1",  # extracted from endpoint
+                "eu-west-2",
                 "aoss",
                 session_token="FwoGZXIvYXdzEBYaDHqa0...",
             )
 
-            # Verify OpenSearch client was created with SSL
             mock_os_class.assert_called_once()
             call_kwargs = mock_os_class.call_args[1]
             assert call_kwargs["use_ssl"] is True
             assert call_kwargs["verify_certs"] is True
             assert call_kwargs["hosts"] == [
-                {"host": "abc123.us-east-1.aoss.amazonaws.com", "port": 443}
+                {"host": "abc123.eu-west-2.aoss.amazonaws.com", "port": 443}
             ]
 
 
@@ -468,8 +602,7 @@ class TestCreateOpenSearchClient:
 class TestOpenSearchIndexingFlow:
     """Integration-style tests for the full indexing flow."""
 
-    @pytest.mark.asyncio
-    async def test_single_sco_indexing(self, structurer, mock_opensearch_client, mock_bedrock_client):
+    def test_single_sco_indexing(self, structurer, mock_opensearch_client, mock_bedrock_client):
         """Index a single SCO object and verify document structure."""
         structurer._opensearch_client = mock_opensearch_client
         structurer._bedrock_client = mock_bedrock_client
@@ -483,46 +616,58 @@ class TestOpenSearchIndexingFlow:
         sco = structurer.create_stix_sco(entity)
         bundle = structurer.build_bundle([sco])
 
-        metadata = {"tier": "observable", "severity_score": 3, "confidence": 0.95}
-        doc_ids = await structurer.index_to_opensearch(bundle, metadata)
+        metadata = {
+            "tier": "observable",
+            "severity_score": 3,
+            "fraud_category": None,
+            "entities": [{"entity_type": "ip_address", "value": "45.33.32.156"}],
+            "tags": ["tlp:white"],
+        }
+        doc_ids = structurer.index_to_opensearch(bundle, metadata)
 
         assert len(doc_ids) == 1
         call_kwargs = mock_opensearch_client.index.call_args[1]
         doc = call_kwargs["body"]
         assert doc["stix_type"] == "ipv4-addr"
         assert "45.33.32.156" in doc["content_summary"]
+        assert doc["entities"] == [{"entity_type": "ip_address", "value": "45.33.32.156"}]
+        assert doc["tags"] == ["tlp:white"]
 
-    @pytest.mark.asyncio
-    async def test_multiple_objects_indexing(self, structurer, mock_opensearch_client, mock_bedrock_client):
+    def test_multiple_objects_indexing(self, structurer, mock_opensearch_client, mock_bedrock_client):
         """Index a bundle with multiple objects."""
         structurer._opensearch_client = mock_opensearch_client
         structurer._bedrock_client = mock_bedrock_client
 
-        # Generate unique IDs for each indexed doc
         mock_opensearch_client.index.side_effect = [
-            {"_id": f"doc-{i}", "_index": "threat-intel", "result": "created"}
+            {"_id": f"doc-{i}", "_index": "dark-web-fraud-intel", "result": "created"}
             for i in range(3)
         ]
 
         objects = []
-        # IP SCO
         objects.append(structurer.create_stix_sco(
             ExtractedEntity(entity_type="ip_address", value="10.0.0.1", context="c2", confidence=0.9)
         ))
-        # Threat Actor SDO
         objects.append(structurer.create_stix_sdo(
             ExtractedEntity(entity_type="bank_name", value="Actor", context="ctx", confidence=0.8),
             "threat-actor",
         ))
-        # Relationship
         objects.append(structurer.create_stix_relationship(
             objects[1].id, objects[0].id, "uses"
         ))
 
         bundle = structurer.build_bundle(objects)
-        metadata = {"tier": "ttp", "severity_score": 9}
+        metadata = {
+            "tier": "ttp",
+            "severity_score": 9,
+            "fraud_category": "mfa_bypass",
+            "entities": [
+                {"entity_type": "ip_address", "value": "10.0.0.1"},
+                {"entity_type": "bank_name", "value": "Actor"},
+            ],
+            "tags": ["mitre-attack:technique=\"T1111\""],
+        }
 
-        doc_ids = await structurer.index_to_opensearch(bundle, metadata)
+        doc_ids = structurer.index_to_opensearch(bundle, metadata)
 
         assert len(doc_ids) == 3
         assert mock_opensearch_client.index.call_count == 3

@@ -35,19 +35,14 @@ def handler(event: dict, context) -> dict:
 
     engine = TaggingEngine()
 
-    # Apply all tag sets
-    # Note: entities are not re-hydrated here to keep the Lambda lightweight —
-    # fraud and attack tags are derived from fraud_category and severity_score alone
-    fraud_tags = engine.apply_fraud_tags([])   # entity-level tags added if entities passed
-    attack_tags = engine.apply_attack_tags(fraud_category)
-    threat_level_tag = engine.apply_threat_level_tag(severity_score)
-    galaxy_match = engine.match_galaxy_cluster(fraud_category)
-
-    all_tags = fraud_tags + attack_tags + [threat_level_tag]
-    if not fraud_tags and not attack_tags:
-        all_tags.append(engine.apply_requires_review_tag())
-    if galaxy_match:
-        all_tags.append(engine.apply_fraud_tags([]))  # placeholder — galaxy tag TBD
+    # Apply all tag sets using the new tag() orchestration method
+    tag_result = engine.tag(
+        entities=[],
+        fraud_category=fraud_category,
+        severity=severity_score,
+    )
+    all_tags = tag_result["tags"]
+    galaxy_match = tag_result["galaxy_match"]
 
     tag_strings = [str(t) for t in all_tags]
 
@@ -57,7 +52,7 @@ def handler(event: dict, context) -> dict:
     s3.put_object(
         Bucket=s3_bucket,
         Key=tag_manifest_key,
-        Body=__import__("json").dumps({
+        Body=json.dumps({
             "stix_bundle_key": stix_bundle_key,
             "fraud_category": fraud_category,
             "severity_score": severity_score,
@@ -79,6 +74,7 @@ def handler(event: dict, context) -> dict:
         "severity_score": severity_score,
         "galaxy_match": galaxy_match,
     }
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -151,9 +147,14 @@ class TaggingEngine(AgentBase):
     def load_taxonomy(self, taxonomy_json: str) -> TaxonomyDefinition:
         """Load a taxonomy from a JSON string.
 
+        Supports two formats:
+        1. Inline entries: predicates contain an "entries" list directly.
+        2. MISP format: a top-level "values" array maps entries to predicates
+           via a "predicate" key, with entries under an "entry" list.
+
         Args:
             taxonomy_json: JSON string containing taxonomy definition with
-                namespace, predicates, and optional entries.
+                namespace, predicates, and optional entries/values.
 
         Returns:
             The parsed TaxonomyDefinition.
@@ -166,22 +167,51 @@ class TaggingEngine(AgentBase):
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid taxonomy JSON: {e}") from e
 
+        if not isinstance(data, dict):
+            raise ValueError("Taxonomy JSON must be an object")
         if "namespace" not in data:
             raise ValueError("Taxonomy must have 'namespace' field")
         if "predicates" not in data or not isinstance(data["predicates"], list):
             raise ValueError("Taxonomy must have 'predicates' list")
 
-        predicates = []
+        # Build a map of predicate value -> entries from the "values" array (MISP format)
+        values_map: dict[str, list[TaxonomyEntry]] = {}
+        if "values" in data:
+            if not isinstance(data["values"], list):
+                raise ValueError("Taxonomy 'values' must be a list")
+            for values_block in data["values"]:
+                if not isinstance(values_block, dict):
+                    raise ValueError("Each item in 'values' must be an object")
+                pred_ref = values_block.get("predicate")
+                if not pred_ref:
+                    raise ValueError("Each 'values' item must have a 'predicate' field")
+                entries_data = values_block.get("entry", [])
+                if not isinstance(entries_data, list):
+                    raise ValueError("'entry' in values must be a list")
+                entries: list[TaxonomyEntry] = []
+                for entry_data in entries_data:
+                    if "value" not in entry_data or "expanded" not in entry_data:
+                        raise ValueError("Each entry must have 'value' and 'expanded'")
+                    entries.append(
+                        TaxonomyEntry(value=entry_data["value"], expanded=entry_data["expanded"])
+                    )
+                values_map[pred_ref] = entries
+
+        predicates: list[TaxonomyPredicate] = []
         for pred_data in data["predicates"]:
             if "value" not in pred_data or "expanded" not in pred_data:
                 raise ValueError("Each predicate must have 'value' and 'expanded'")
-            entries = []
+            # Entries can come from inline "entries" or from the top-level "values" array
+            entries: list[TaxonomyEntry] = []
             for entry_data in pred_data.get("entries", []):
                 if "value" not in entry_data or "expanded" not in entry_data:
                     raise ValueError("Each entry must have 'value' and 'expanded'")
                 entries.append(
                     TaxonomyEntry(value=entry_data["value"], expanded=entry_data["expanded"])
                 )
+            # Merge entries from MISP-format "values" array
+            if pred_data["value"] in values_map:
+                entries.extend(values_map[pred_data["value"]])
             predicates.append(
                 TaxonomyPredicate(
                     value=pred_data["value"], expanded=pred_data["expanded"], entries=entries
@@ -196,7 +226,93 @@ class TaggingEngine(AgentBase):
         )
 
         self._taxonomies[taxonomy.namespace] = taxonomy
+        logger.info(
+            "TaggingEngine: loaded taxonomy namespace=%s with %d predicates",
+            taxonomy.namespace,
+            len(taxonomy.predicates),
+        )
         return taxonomy
+
+    def load_taxonomy_from_s3(
+        self, s3_bucket: str, s3_key: str, s3_client=None
+    ) -> TaxonomyDefinition:
+        """Load a taxonomy definition from an S3 object.
+
+        Retrieves the JSON file from S3 and delegates to load_taxonomy() for
+        parsing and validation.
+
+        Args:
+            s3_bucket: S3 bucket containing the taxonomy file.
+            s3_key: S3 key of the taxonomy JSON file.
+            s3_client: Optional boto3 S3 client (created if not provided).
+
+        Returns:
+            The parsed TaxonomyDefinition.
+
+        Raises:
+            RuntimeError: If S3 retrieval fails.
+            ValueError: If taxonomy JSON is invalid.
+        """
+        if s3_client is None:
+            s3_client = boto3.client("s3")
+
+        try:
+            response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
+            taxonomy_json = response["Body"].read().decode("utf-8")
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to load taxonomy from s3://{s3_bucket}/{s3_key}: {exc}"
+            ) from exc
+
+        return self.load_taxonomy(taxonomy_json)
+
+    def load_taxonomies_from_s3_prefix(
+        self, s3_bucket: str, s3_prefix: str, s3_client=None
+    ) -> list[TaxonomyDefinition]:
+        """Load all taxonomy JSON files under an S3 prefix.
+
+        Lists all objects under the prefix and loads each one that ends with .json.
+
+        Args:
+            s3_bucket: S3 bucket containing the taxonomy files.
+            s3_prefix: S3 prefix under which taxonomy JSON files reside.
+            s3_client: Optional boto3 S3 client (created if not provided).
+
+        Returns:
+            List of loaded TaxonomyDefinition objects.
+
+        Raises:
+            RuntimeError: If S3 listing fails.
+        """
+        if s3_client is None:
+            s3_client = boto3.client("s3")
+
+        try:
+            response = s3_client.list_objects_v2(Bucket=s3_bucket, Prefix=s3_prefix)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to list taxonomy files at s3://{s3_bucket}/{s3_prefix}: {exc}"
+            ) from exc
+
+        loaded: list[TaxonomyDefinition] = []
+        for obj in response.get("Contents", []):
+            key = obj["Key"]
+            if not key.endswith(".json"):
+                continue
+            try:
+                taxonomy = self.load_taxonomy_from_s3(s3_bucket, key, s3_client=s3_client)
+                loaded.append(taxonomy)
+            except (ValueError, RuntimeError) as exc:
+                logger.warning(
+                    "TaggingEngine: skipping invalid taxonomy at s3://%s/%s: %s",
+                    s3_bucket, key, exc,
+                )
+
+        logger.info(
+            "TaggingEngine: loaded %d taxonomies from s3://%s/%s",
+            len(loaded), s3_bucket, s3_prefix,
+        )
+        return loaded
 
     def load_attack_techniques_from_s3(
         self, s3_bucket: str, s3_key: str, s3_client=None
@@ -441,24 +557,186 @@ class TaggingEngine(AgentBase):
 
         return tags
 
-    def match_galaxy_cluster(self, fraud_category: Optional[str]) -> Optional[dict]:
-        """Match a fraud category to a known MISP Galaxy cluster.
+    def match_galaxy_cluster(
+        self,
+        fraud_category: str | None,
+        *,
+        knowledge_base_id: str | None = None,
+        bedrock_client=None,
+    ) -> dict | None:
+        """Match a fraud category to a MISP Galaxy cluster via Knowledge Base query.
 
-        Provides a simple mapping of fraud categories to MISP Galaxy cluster
-        metadata for linking events to known threat actor patterns.
+        First queries the AgentCore Managed Knowledge Base (Bedrock Agent Runtime
+        Agentic Retriever) for threat actor matching against the fraud category.
+        Falls back to a static mapping if the Knowledge Base is unavailable or
+        returns no results.
 
-        Mapping:
-            mfa_bypass       → mitre-attack-pattern / MFA Bypass
-            phishing_kit     → mitre-attack-pattern / Phishing
-            account_takeover → mitre-attack-pattern / Account Takeover
-            Others           → None
+        When a match is found, the event is linked to the corresponding MISP
+        Galaxy cluster.
 
         Args:
-            fraud_category: Optional fraud category string.
+            fraud_category: Optional fraud category string to match.
+            knowledge_base_id: AgentCore Knowledge Base ID. If None, reads from
+                KNOWLEDGE_BASE_ID env var or skips KB query.
+            bedrock_client: Optional boto3 bedrock-agent-runtime client
+                (created if not provided).
 
         Returns:
-            Dictionary with galaxy, cluster_uuid, and cluster_value keys
+            Dictionary with galaxy, cluster_uuid, cluster_value, and source keys
             if a match is found, otherwise None.
+        """
+        if fraud_category is None or fraud_category == "":
+            return None
+
+        # Attempt Knowledge Base query first
+        kb_result = self._query_knowledge_base(
+            fraud_category,
+            knowledge_base_id=knowledge_base_id,
+            bedrock_client=bedrock_client,
+        )
+        if kb_result is not None:
+            return kb_result
+
+        # Fallback to static galaxy mapping
+        return self._static_galaxy_lookup(fraud_category)
+
+    def _query_knowledge_base(
+        self,
+        fraud_category: str,
+        *,
+        knowledge_base_id: str | None = None,
+        bedrock_client=None,
+    ) -> dict | None:
+        """Query AgentCore Knowledge Base for threat actor matching.
+
+        Uses the Bedrock Agent Runtime retrieve API to search for galaxy
+        cluster matches related to the given fraud category.
+
+        Args:
+            fraud_category: The fraud category to search for.
+            knowledge_base_id: Knowledge Base ID override.
+            bedrock_client: Optional boto3 bedrock-agent-runtime client.
+
+        Returns:
+            Dict with galaxy cluster info if KB returns a confident match,
+            otherwise None.
+        """
+        kb_id = knowledge_base_id or os.environ.get("KNOWLEDGE_BASE_ID")
+        if not kb_id:
+            logger.debug(
+                "TaggingEngine: no knowledge_base_id configured, skipping KB query"
+            )
+            return None
+
+        if bedrock_client is None:
+            bedrock_client = boto3.client("bedrock-agent-runtime")
+
+        query_text = (
+            f"MISP Galaxy cluster for threat actor profile matching "
+            f"fraud category: {fraud_category}"
+        )
+
+        try:
+            response = bedrock_client.retrieve(
+                knowledgeBaseId=kb_id,
+                retrievalQuery={"text": query_text},
+                retrievalConfiguration={
+                    "vectorSearchConfiguration": {
+                        "numberOfResults": 3,
+                    }
+                },
+            )
+        except Exception as exc:
+            logger.warning(
+                "TaggingEngine: Knowledge Base query failed for category=%s: %s",
+                fraud_category,
+                exc,
+            )
+            return None
+
+        results = response.get("retrievalResults", [])
+        if not results:
+            logger.debug(
+                "TaggingEngine: no KB results for category=%s", fraud_category
+            )
+            return None
+
+        # Parse the top result for galaxy cluster information
+        top_result = results[0]
+        content = top_result.get("content", {}).get("text", "")
+        score = top_result.get("score", 0.0)
+
+        # Require a minimum relevance score to trust the KB result
+        if score < 0.5:
+            logger.debug(
+                "TaggingEngine: KB result score %.2f below threshold for category=%s",
+                score,
+                fraud_category,
+            )
+            return None
+
+        # Extract galaxy cluster metadata from the KB response content
+        cluster_info = self._parse_kb_galaxy_result(content, fraud_category)
+        if cluster_info:
+            cluster_info["source"] = "knowledge_base"
+            logger.info(
+                "TaggingEngine: KB matched galaxy cluster=%s for category=%s",
+                cluster_info.get("cluster_value"),
+                fraud_category,
+            )
+        return cluster_info
+
+    def _parse_kb_galaxy_result(self, content: str, fraud_category: str) -> dict | None:
+        """Parse Knowledge Base retrieval result into galaxy cluster metadata.
+
+        Attempts to parse JSON from the KB result content. If the content
+        contains valid galaxy cluster fields, returns the structured metadata.
+
+        Args:
+            content: Text content returned by the Knowledge Base.
+            fraud_category: The fraud category for context.
+
+        Returns:
+            Dict with galaxy, cluster_uuid, and cluster_value if parseable,
+            otherwise None.
+        """
+        # Try JSON parsing first (KB may store structured galaxy data)
+        try:
+            data = json.loads(content)
+            if isinstance(data, dict):
+                galaxy = data.get("galaxy")
+                cluster_uuid = data.get("cluster_uuid")
+                cluster_value = data.get("cluster_value")
+                if galaxy and cluster_uuid and cluster_value:
+                    return {
+                        "galaxy": galaxy,
+                        "cluster_uuid": cluster_uuid,
+                        "cluster_value": cluster_value,
+                    }
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # If content is unstructured text, attempt keyword extraction
+        if "galaxy" in content.lower() and "cluster" in content.lower():
+            return {
+                "galaxy": "threat-actor",
+                "cluster_uuid": f"kb-{fraud_category}-001",
+                "cluster_value": content[:100].strip(),
+            }
+
+        return None
+
+    def _static_galaxy_lookup(self, fraud_category: str) -> dict | None:
+        """Static fallback mapping of fraud categories to MISP Galaxy clusters.
+
+        Used when the Knowledge Base is unavailable or returns no matches.
+
+        Args:
+            fraud_category: The fraud category to look up.
+
+        Returns:
+            Dict with galaxy, cluster_uuid, cluster_value, and source keys,
+            or None if no static mapping exists.
         """
         galaxy_map: dict[str, dict] = {
             "mfa_bypass": {
@@ -476,7 +754,6 @@ class TaggingEngine(AgentBase):
                 "cluster_uuid": "ato-001",
                 "cluster_value": "Account Takeover",
             },
-            # Extended galaxy mappings — DC-007, DC-008, CHAPS-026, XC-007
             "new_account_fraud": {
                 "galaxy": "financial-fraud",
                 "cluster_uuid": "new-account-fraud-001",
@@ -504,7 +781,83 @@ class TaggingEngine(AgentBase):
             },
         }
 
-        if fraud_category is None or fraud_category not in galaxy_map:
+        if fraud_category not in galaxy_map:
             return None
 
-        return galaxy_map[fraud_category]
+        result = galaxy_map[fraud_category].copy()
+        result["source"] = "static"
+        return result
+
+    def tag(
+        self,
+        entities: list[ExtractedEntity],
+        fraud_category: str | None,
+        severity: int,
+        *,
+        knowledge_base_id: str | None = None,
+        bedrock_client=None,
+    ) -> dict:
+        """Orchestrate all tagging steps for an event.
+
+        Executes the full tagging pipeline:
+        1. apply_attack_tags() — MITRE ATT&CK technique mapping
+        2. apply_fraud_tags() — banking keyword-based fraud tags
+        3. match_galaxy_cluster() — Knowledge Base + static galaxy matching
+        4. apply_threat_level_tag() — severity-to-threat-level mapping
+        5. Fallback: apply workflow:status="requires-review" if no taxonomy match
+
+        Args:
+            entities: List of extracted entities from the content.
+            fraud_category: Optional fraud category string from classification.
+            severity: Integer severity score from 1 to 10.
+            knowledge_base_id: Optional Knowledge Base ID for galaxy matching.
+            bedrock_client: Optional boto3 bedrock-agent-runtime client.
+
+        Returns:
+            Dict containing:
+                - tags: list[MachineTag] — all applied tags
+                - galaxy_match: dict | None — galaxy cluster match result
+        """
+        attack_tags = self.apply_attack_tags(fraud_category)
+        fraud_tags = self.apply_fraud_tags(entities)
+        galaxy_match = self.match_galaxy_cluster(
+            fraud_category,
+            knowledge_base_id=knowledge_base_id,
+            bedrock_client=bedrock_client,
+        )
+        threat_level_tag = self.apply_threat_level_tag(severity)
+
+        all_tags: list[MachineTag] = []
+        all_tags.extend(attack_tags)
+        all_tags.extend(fraud_tags)
+        all_tags.append(threat_level_tag)
+
+        # Apply galaxy cluster tag if matched
+        if galaxy_match:
+            all_tags.append(
+                MachineTag(
+                    namespace="misp-galaxy",
+                    predicate=galaxy_match["galaxy"],
+                    value=galaxy_match["cluster_value"],
+                )
+            )
+
+        # Fallback: if no taxonomy predicate matched, apply requires-review
+        if not attack_tags and not fraud_tags and galaxy_match is None:
+            all_tags.append(
+                MachineTag(
+                    namespace="workflow",
+                    predicate="status",
+                    value="requires-review",
+                )
+            )
+            logger.info(
+                "TaggingEngine: no taxonomy match for category=%s, "
+                "applied workflow:status=requires-review",
+                fraud_category,
+            )
+
+        return {
+            "tags": all_tags,
+            "galaxy_match": galaxy_match,
+        }

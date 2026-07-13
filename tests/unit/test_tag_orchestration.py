@@ -45,31 +45,29 @@ class TestMatchGalaxyCluster:
         self.engine = TaggingEngine()
 
     def test_mfa_bypass_maps_to_galaxy(self):
-        """mfa_bypass maps to MFA Bypass galaxy cluster."""
+        """mfa_bypass maps to MFA Bypass galaxy cluster via static fallback."""
         result = self.engine.match_galaxy_cluster("mfa_bypass")
-        assert result == {
-            "galaxy": "mitre-attack-pattern",
-            "cluster_uuid": "mfa-bypass-001",
-            "cluster_value": "MFA Bypass",
-        }
+        assert result is not None
+        assert result["galaxy"] == "mitre-attack-pattern"
+        assert result["cluster_uuid"] == "mfa-bypass-001"
+        assert result["cluster_value"] == "MFA Bypass"
+        assert result["source"] == "static"
 
     def test_phishing_kit_maps_to_galaxy(self):
         """phishing_kit maps to Phishing galaxy cluster."""
         result = self.engine.match_galaxy_cluster("phishing_kit")
-        assert result == {
-            "galaxy": "mitre-attack-pattern",
-            "cluster_uuid": "phishing-001",
-            "cluster_value": "Phishing",
-        }
+        assert result is not None
+        assert result["galaxy"] == "mitre-attack-pattern"
+        assert result["cluster_uuid"] == "phishing-001"
+        assert result["cluster_value"] == "Phishing"
 
     def test_account_takeover_maps_to_galaxy(self):
         """account_takeover maps to Account Takeover galaxy cluster."""
         result = self.engine.match_galaxy_cluster("account_takeover")
-        assert result == {
-            "galaxy": "mitre-attack-pattern",
-            "cluster_uuid": "ato-001",
-            "cluster_value": "Account Takeover",
-        }
+        assert result is not None
+        assert result["galaxy"] == "mitre-attack-pattern"
+        assert result["cluster_uuid"] == "ato-001"
+        assert result["cluster_value"] == "Account Takeover"
 
     def test_none_category_returns_none(self):
         """None fraud_category returns None (no galaxy match)."""
@@ -78,7 +76,7 @@ class TestMatchGalaxyCluster:
 
     def test_unknown_category_returns_none(self):
         """An unmapped fraud category returns None."""
-        result = self.engine.match_galaxy_cluster("synthetic_identity")
+        result = self.engine.match_galaxy_cluster("some_unknown_category")
         assert result is None
 
     def test_cnp_fraud_returns_none(self):

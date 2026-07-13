@@ -638,53 +638,201 @@ class DataStructurer:
 
     # --- OpenSearch Serverless Vector Indexing ---
 
+    # Default index name for dark web fraud intelligence
+    _DEFAULT_INDEX_NAME = "dark-web-fraud-intel"
+
+    # knn_vector dimension for Titan Embed v2
+    _EMBEDDING_DIMENSION = 1024
+
+    def get_index_name(self) -> str:
+        """Return the OpenSearch index name from config or default.
+
+        Returns:
+            The configured index name or 'dark-web-fraud-intel' as default.
+        """
+        if self._config and self._config.opensearch_collection_name:
+            return self._config.opensearch_collection_name
+        return self._DEFAULT_INDEX_NAME
+
+    def ensure_index_mapping(self) -> None:
+        """Create the OpenSearch index with knn_vector mapping if it does not exist.
+
+        Creates an index with:
+        - knn_vector field (dimension=1024, method=hnsw, space_type=cosinesimil)
+        - Keyword fields for stix_id, tier, severity, fraud_category
+        - Nested/text fields for entities, tags, content_summary
+
+        The index uses OpenSearch Serverless VECTORSEARCH collection type.
+
+        Raises:
+            RuntimeError: If index creation fails for reasons other than already existing.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        if self._opensearch_client is None:
+            self._opensearch_client = self._create_opensearch_client()
+
+        index_name = self.get_index_name()
+
+        # Check if index already exists
+        if self._opensearch_client.indices.exists(index=index_name):
+            logger.info("DataStructurer: index '%s' already exists, skipping creation", index_name)
+            return
+
+        mapping = {
+            "settings": {
+                "index": {
+                    "knn": True,
+                },
+            },
+            "mappings": {
+                "properties": {
+                    "intelligence_vector": {
+                        "type": "knn_vector",
+                        "dimension": self._EMBEDDING_DIMENSION,
+                        "method": {
+                            "name": "hnsw",
+                            "space_type": "cosinesimil",
+                            "engine": "nmslib",
+                            "parameters": {
+                                "ef_construction": 512,
+                                "m": 16,
+                            },
+                        },
+                    },
+                    "stix_id": {"type": "keyword"},
+                    "stix_type": {"type": "keyword"},
+                    "tier": {"type": "keyword"},
+                    "severity_score": {"type": "integer"},
+                    "fraud_category": {"type": "keyword"},
+                    "entities": {
+                        "type": "nested",
+                        "properties": {
+                            "entity_type": {"type": "keyword"},
+                            "value": {"type": "keyword"},
+                        },
+                    },
+                    "tags": {"type": "keyword"},
+                    "content_summary": {"type": "text"},
+                    "created_at": {"type": "date"},
+                },
+            },
+        }
+
+        try:
+            self._opensearch_client.indices.create(index=index_name, body=mapping)
+            logger.info("DataStructurer: created index '%s' with knn_vector mapping", index_name)
+        except Exception as exc:
+            # OpenSearch may raise if index already exists (race condition)
+            error_msg = str(exc)
+            if "resource_already_exists_exception" in error_msg.lower():
+                logger.info("DataStructurer: index '%s' already exists (race)", index_name)
+            else:
+                raise RuntimeError(
+                    f"Failed to create OpenSearch index '{index_name}': {exc}"
+                ) from exc
+
     def index_to_opensearch(self, bundle: stix2.Bundle, metadata: dict) -> list[str]:
         """Index STIX objects into OpenSearch Serverless VECTORSEARCH collection.
 
         Generates embeddings via Bedrock and indexes each STIX object with
         metadata into the VECTORSEARCH collection for similarity search.
 
+        Each indexed document includes:
+        - stix_id: The STIX object identifier
+        - stix_type: The STIX object type (e.g., 'ipv4-addr', 'threat-actor')
+        - tier: Intelligence tier (observable/indicator/ttp)
+        - severity_score: Severity score from content analysis
+        - fraud_category: Fraud category classification
+        - entities: List of entity dicts with entity_type and value
+        - tags: List of applied tag strings
+        - content_summary: Text summary of the STIX object
+        - intelligence_vector: 1024-dimension embedding vector
+        - created_at: ISO 8601 timestamp
+
         Args:
             bundle: STIX 2.1 Bundle to index.
-            metadata: Additional metadata (tier, severity, fraud_category, tags).
+            metadata: Additional metadata dict with keys:
+                - tier (str): Intelligence tier, default "observable"
+                - severity_score (int): Severity 1-10, default 1
+                - fraud_category (str | None): Fraud category
+                - entities (list[dict]): Entity dicts with entity_type/value
+                - tags (list[str]): Applied tag strings
 
         Returns:
             List of OpenSearch document IDs for indexed objects.
+
+        Raises:
+            RuntimeError: If OpenSearch indexing fails.
         """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         if self._opensearch_client is None:
             self._opensearch_client = self._create_opensearch_client()
 
-        doc_ids = []
+        index_name = self.get_index_name()
+        doc_ids: list[str] = []
+
         for obj in bundle.objects:
             doc = {
                 "stix_id": obj.id,
                 "stix_type": obj.type,
                 "tier": metadata.get("tier", "observable"),
                 "severity_score": metadata.get("severity_score", 1),
-                "confidence": metadata.get("confidence", 0.0),
                 "fraud_category": metadata.get("fraud_category"),
+                "entities": metadata.get("entities", []),
+                "tags": metadata.get("tags", []),
                 "content_summary": self._get_object_summary(obj),
                 "created_at": datetime.now(UTC).isoformat(),
                 "intelligence_vector": self._generate_embedding(obj),
             }
 
             response = self._opensearch_client.index(
-                index=self._config.opensearch_collection_name if self._config else "threat-intel",
+                index=index_name,
                 body=doc,
             )
             doc_ids.append(response["_id"])
 
+        logger.info(
+            "DataStructurer: indexed %d objects to '%s'",
+            len(doc_ids),
+            index_name,
+        )
         return doc_ids
 
     def _generate_embedding(self, stix_obj) -> list[float]:
-        """Generate vector embedding for a STIX object using Bedrock."""
+        """Generate vector embedding for a STIX object using Bedrock.
+
+        Uses the configured Bedrock embedding model (default: amazon.titan-embed-text-v2:0)
+        to produce a 1024-dimension vector from the object's text summary.
+
+        Args:
+            stix_obj: A STIX 2.1 object to generate an embedding for.
+
+        Returns:
+            A list of 1024 floats representing the embedding vector.
+
+        Raises:
+            RuntimeError: If Bedrock invocation fails.
+        """
         if self._bedrock_client is None:
-            # Use module-level client if available (Lambda warm invocation)
-            self._bedrock_client = _bedrock_client if '_bedrock_client' in dir() else boto3.client("bedrock-runtime")
+            self._bedrock_client = boto3.client(
+                "bedrock-runtime", region_name=os.environ.get("AWS_REGION", "eu-west-2")
+            )
 
         text = self._get_object_summary(stix_obj)
+        model_id = (
+            self._config.bedrock_embedding_model_id
+            if self._config
+            else "amazon.titan-embed-text-v2:0"
+        )
+
         response = self._bedrock_client.invoke_model(
-            modelId=self._config.bedrock_embedding_model_id if self._config else "amazon.titan-embed-text-v2:0",
+            modelId=model_id,
             body=json.dumps({"inputText": text}),
             contentType="application/json",
         )
@@ -692,7 +840,17 @@ class DataStructurer:
         return result["embedding"]
 
     def _get_object_summary(self, stix_obj) -> str:
-        """Get a text summary of a STIX object for embedding."""
+        """Get a text summary of a STIX object for embedding generation.
+
+        Combines available fields (type, name, description, value) into a
+        pipe-separated string suitable for embedding input.
+
+        Args:
+            stix_obj: A STIX 2.1 object.
+
+        Returns:
+            A text summary string.
+        """
         parts = [f"Type: {stix_obj.type}"]
         if hasattr(stix_obj, "name"):
             parts.append(f"Name: {stix_obj.name}")
@@ -703,13 +861,19 @@ class DataStructurer:
         return " | ".join(parts)
 
     def _create_opensearch_client(self):
-        """Create OpenSearch client for the VECTORSEARCH collection."""
+        """Create OpenSearch client for the VECTORSEARCH collection.
+
+        Uses AWS4Auth with SigV4 signing for OpenSearch Serverless (service='aoss').
+        Region is read from AWS_REGION environment variable (default: eu-west-2).
+
+        Returns:
+            An opensearchpy.OpenSearch client configured for the VECTORSEARCH endpoint.
+        """
         from opensearchpy import OpenSearch, RequestsHttpConnection
         from requests_aws4auth import AWS4Auth
 
         credentials = boto3.Session().get_credentials()
-        # Use Lambda env var for region — don't parse from endpoint (fragile)
-        region = os.environ.get("AWS_REGION", "eu-west-1")
+        region = os.environ.get("AWS_REGION", "eu-west-2")
         awsauth = AWS4Auth(
             credentials.access_key,
             credentials.secret_key,
@@ -718,13 +882,31 @@ class DataStructurer:
             session_token=credentials.token,
         )
 
+        host = self._config.opensearch_endpoint.replace("https://", "") if self._config else ""
+        return OpenSearch(
+            hosts=[{"host": host, "port": 443}],
+            http_auth=awsauth,
+            use_ssl=True,
+            verify_certs=True,
+            connection_class=RequestsHttpConnection,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Lambda entry point
 # ---------------------------------------------------------------------------
 
 # Module-level clients — reused across warm invocations
-_bedrock_client = boto3.client("bedrock-runtime")
+# Lazy-initialized to avoid import-time AWS credential resolution in tests
+_bedrock_client: object | None = None
+
+
+def _get_bedrock_client():
+    """Get or create the module-level Bedrock client for Lambda warm starts."""
+    global _bedrock_client
+    if _bedrock_client is None:
+        _bedrock_client = boto3.client("bedrock-runtime")
+    return _bedrock_client
 
 
 def handler(event: dict, context) -> dict:
@@ -769,7 +951,7 @@ def handler(event: dict, context) -> dict:
         s3_bucket=s3_bucket,
     )
     structurer = DataStructurer(config)
-    structurer._bedrock_client = _bedrock_client  # inject warm client
+    structurer._bedrock_client = _get_bedrock_client()  # inject warm client
 
     # Rebuild ExtractedEntity objects from Step Functions payload
     from dark_web_fraud_agent.models.content_analyst import ClassifiedContent, ExtractedEntity
@@ -811,8 +993,11 @@ def handler(event: dict, context) -> dict:
     metadata = {
         "tier": tier.value,
         "severity_score": classification.severity_score,
-        "confidence": classification.confidence,
         "fraud_category": fraud_category,
+        "entities": [
+            {"entity_type": e.entity_type, "value": e.value} for e in entities
+        ],
+        "tags": event.get("tags", []),
     }
 
     # Index to OpenSearch (sync — async removed)
@@ -837,11 +1022,3 @@ def handler(event: dict, context) -> dict:
         "fraud_category": fraud_category,
         "severity_score": classification.severity_score,
     }
-
-        return OpenSearch(
-            hosts=[{"host": self._config.opensearch_endpoint.replace("https://", ""), "port": 443}],
-            http_auth=awsauth,
-            use_ssl=True,
-            verify_certs=True,
-            connection_class=RequestsHttpConnection,
-        )

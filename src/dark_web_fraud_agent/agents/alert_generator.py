@@ -89,8 +89,10 @@ def _generate_sigma_rule(ttp_reference: str, ttp_description: str) -> str:
 # Lambda entry point
 # ---------------------------------------------------------------------------
 
+import boto3 as _boto3_early  # noqa: E402 — needed before full imports below
+
 # Module-level SNS client — reused across warm invocations
-_sns_client = boto3.client("sns")
+_sns_client = _boto3_early.client("sns")
 
 
 def handler(event: dict, context) -> dict:
@@ -224,6 +226,7 @@ def handler(event: dict, context) -> dict:
         "alert_published": alert_published,
     }
 import json
+import logging
 import os
 import uuid
 from dataclasses import dataclass
@@ -239,6 +242,14 @@ from dark_web_fraud_agent.models.alerts import (
     FraudAlert,
 )
 from dark_web_fraud_agent.models.shared import AgentBase, AgentConfig, AgentHealth
+
+logger = logging.getLogger(__name__)
+
+# Minimum number of converging items to trigger a campaign alert
+_CONVERGENCE_THRESHOLD = 3
+
+# OpenSearch similarity score threshold (cosine similarity; 0.0-1.0)
+_SIMILARITY_THRESHOLD = 0.75
 
 
 @dataclass
@@ -256,17 +267,24 @@ class AlertGenerator(AgentBase):
 
     Tracks intelligence items referencing common TTPs within a configurable time window.
     When 3+ items converge around the same TTP, a consolidated campaign alert is generated.
+
+    Convergence detection uses two complementary mechanisms:
+    1. DynamoDB partition-key grouping — items sharing a TTP reference are grouped.
+    2. OpenSearch vector similarity — items that are semantically similar (embedding
+       cosine >= 0.75) are discovered even when their TTP reference strings differ.
     """
 
     def __init__(
         self,
         config: Optional[AgentConfig] = None,
         convergence_window: timedelta = timedelta(hours=24),
+        opensearch_client: Any | None = None,
     ):
         if config is None:
             config = AgentConfig(agent_id="alert-generator", agent_name="Alert Generator")
         super().__init__(config)
         self._convergence_window = convergence_window
+        self._opensearch_client = opensearch_client
         # In-memory tracker kept for unit tests only. Lambda production path
         # uses DynamoDB (track_item / check_campaign_convergence below).
         self._convergence_tracker: dict[str, list[ConvergenceItem]] = {}
@@ -279,6 +297,138 @@ class AlertGenerator(AgentBase):
         """Return the DynamoDB Table resource (env var injected by CDK)."""
         table_name = os.environ.get("DYNAMODB_CONVERGENCE_TABLE", "dark-web-fraud-convergence")
         return boto3.resource("dynamodb").Table(table_name)
+
+    def _get_opensearch_client(self):
+        """Return the OpenSearch client, creating one if not injected.
+
+        Uses the OPENSEARCH_ENDPOINT env var and AWS SigV4 auth for
+        OpenSearch Serverless (AOSS) in eu-west-2.
+        """
+        if self._opensearch_client is not None:
+            return self._opensearch_client
+
+        endpoint = os.environ.get("OPENSEARCH_ENDPOINT", "")
+        if not endpoint:
+            return None
+
+        try:
+            from opensearchpy import OpenSearch, RequestsHttpConnection
+            from requests_aws4auth import AWS4Auth
+
+            session = boto3.Session()
+            credentials = session.get_credentials()
+            region = os.environ.get("AWS_REGION", "eu-west-2")
+            auth = AWS4Auth(
+                credentials.access_key,
+                credentials.secret_key,
+                region,
+                "aoss",
+                session_token=credentials.token,
+            )
+
+            host = endpoint.replace("https://", "").rstrip("/")
+            client = OpenSearch(
+                hosts=[{"host": host, "port": 443}],
+                http_auth=auth,
+                use_ssl=True,
+                verify_certs=True,
+                connection_class=RequestsHttpConnection,
+            )
+            self._opensearch_client = client
+            return client
+        except Exception as exc:
+            logger.warning("AlertGenerator: failed to create OpenSearch client: %s", exc)
+            return None
+
+    def query_opensearch_similar_items(
+        self,
+        ttp_reference: str,
+        embedding_vector: list[float] | None = None,
+        top_k: int = 20,
+    ) -> list[str]:
+        """Query OpenSearch for items with similar TTP embeddings.
+
+        Uses k-NN vector search to find intelligence items that are semantically
+        related to the given TTP reference, even if they use different string
+        labels for the same technique.
+
+        Args:
+            ttp_reference: The TTP reference key to search for.
+            embedding_vector: Pre-computed embedding vector. If None, falls back
+                to a keyword match on the ttp_reference field.
+            top_k: Maximum number of similar items to return.
+
+        Returns:
+            List of STIX IDs from OpenSearch that are similar to the given TTP.
+        """
+        client = self._get_opensearch_client()
+        if client is None:
+            logger.debug("AlertGenerator: OpenSearch not configured, skipping similarity query")
+            return []
+
+        index_name = os.environ.get("OPENSEARCH_INDEX", "threat-intel")
+
+        try:
+            if embedding_vector:
+                # k-NN vector similarity search
+                query_body = {
+                    "size": top_k,
+                    "query": {
+                        "knn": {
+                            "embedding_vector": {
+                                "vector": embedding_vector,
+                                "k": top_k,
+                            }
+                        }
+                    },
+                    "_source": ["stix_id", "ttp_reference", "tier"],
+                }
+            else:
+                # Fallback: keyword match on ttp_reference field
+                query_body = {
+                    "size": top_k,
+                    "query": {
+                        "bool": {
+                            "should": [
+                                {"match": {"ttp_reference": ttp_reference}},
+                                {"match": {"tags": ttp_reference}},
+                            ],
+                            "minimum_should_match": 1,
+                        }
+                    },
+                    "_source": ["stix_id", "ttp_reference", "tier"],
+                }
+
+            response = client.search(index=index_name, body=query_body)
+            hits = response.get("hits", {}).get("hits", [])
+
+            similar_ids: list[str] = []
+            for hit in hits:
+                score = hit.get("_score", 0.0)
+                source = hit.get("_source", {})
+                stix_id = source.get("stix_id", "")
+
+                # For k-NN queries, filter by similarity threshold
+                if embedding_vector and score < _SIMILARITY_THRESHOLD:
+                    continue
+
+                if stix_id:
+                    similar_ids.append(stix_id)
+
+            logger.info(
+                "AlertGenerator: OpenSearch returned %d similar items for ttp=%s",
+                len(similar_ids),
+                ttp_reference,
+            )
+            return similar_ids
+
+        except Exception as exc:
+            logger.error(
+                "AlertGenerator: OpenSearch query failed for ttp=%s: %s",
+                ttp_reference,
+                exc,
+            )
+            return []
 
 
     def track_item(
@@ -293,6 +443,9 @@ class AlertGenerator(AgentBase):
         Items are written with a TTL so DynamoDB auto-expires them when the
         convergence window closes — no manual pruning needed.
 
+        Also maintains an in-memory tracker for pruning-based convergence
+        detection when DynamoDB is not available (unit tests, local dev).
+
         Args:
             stix_id: STIX bundle ID for this intelligence item.
             ttp_reference: The ATT&CK technique / fraud category key used for convergence.
@@ -301,6 +454,19 @@ class AlertGenerator(AgentBase):
                 ({"entity_type": ..., "value": ...}) for cross-entity co-occurrence
                 tracking (CHAPS-026 pattern: credential listing + mule script same institution).
         """
+        # In-memory tracking (for unit tests and local development)
+        self._prune_expired(ttp_reference)
+        item = ConvergenceItem(
+            stix_id=stix_id,
+            ttp_reference=ttp_reference,
+            tier=tier,
+            timestamp=datetime.now(UTC),
+        )
+        if ttp_reference not in self._convergence_tracker:
+            self._convergence_tracker[ttp_reference] = []
+        self._convergence_tracker[ttp_reference].append(item)
+
+        # DynamoDB persistence
         table = self._get_convergence_table()
         ttl = int((datetime.now(UTC) + self._convergence_window).timestamp())
         table.put_item(Item={
@@ -333,19 +499,55 @@ class AlertGenerator(AgentBase):
                         "TTL": ttl,
                     })
 
-    def check_campaign_convergence(self, ttp_reference: str) -> Optional[list[str]]:
+    def check_campaign_convergence(
+        self,
+        ttp_reference: str,
+        embedding_vector: list[float] | None = None,
+    ) -> list[str] | None:
         """Check if 3+ items reference the same TTP within the convergence window.
 
-        Queries DynamoDB ConvergenceTable — items are auto-expired by TTL.
-        Returns list of STIX IDs if convergence is detected, None otherwise.
+        Uses a two-phase approach:
+        1. Query DynamoDB ConvergenceTable for items with the exact TTP reference.
+        2. Query OpenSearch for semantically similar items (vector similarity).
+        3. Merge results (deduplicated) and check if threshold is met.
+
+        Items in DynamoDB are auto-expired by TTL so only items within the
+        convergence window are returned.
+
+        Args:
+            ttp_reference: The TTP reference key to check convergence for.
+            embedding_vector: Optional embedding vector for OpenSearch k-NN search.
+
+        Returns:
+            List of STIX IDs if convergence is detected (>= 3 items), None otherwise.
         """
         table = self._get_convergence_table()
         resp = table.query(
             KeyConditionExpression=Key("PK").eq(f"CONV#{ttp_reference}"),
         )
-        items = resp.get("Items", [])
-        if len(items) >= 3:
-            return [item["stix_id"] for item in items]
+        dynamo_items = resp.get("Items", [])
+        converged_ids: list[str] = [item["stix_id"] for item in dynamo_items]
+
+        # Phase 2: OpenSearch vector similarity for semantic matches
+        os_similar_ids = self.query_opensearch_similar_items(
+            ttp_reference=ttp_reference,
+            embedding_vector=embedding_vector,
+        )
+
+        # Merge and deduplicate
+        seen = set(converged_ids)
+        for stix_id in os_similar_ids:
+            if stix_id not in seen:
+                converged_ids.append(stix_id)
+                seen.add(stix_id)
+
+        if len(converged_ids) >= _CONVERGENCE_THRESHOLD:
+            logger.info(
+                "AlertGenerator: campaign convergence detected for ttp=%s (%d items)",
+                ttp_reference,
+                len(converged_ids),
+            )
+            return converged_ids
         return None
 
     def check_entity_cooccurrence(self, entity_type: str, entity_value: str) -> Optional[list[str]]:
