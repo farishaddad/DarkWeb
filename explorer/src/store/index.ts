@@ -1,1 +1,1 @@
-// Store module - zustand state management
+export { useAppStore } from './appStore'

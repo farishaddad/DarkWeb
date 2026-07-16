@@ -121,14 +121,14 @@ Build a React + TypeScript SPA using Vite, zustand, recharts, d3-force, and Tail
 - [x] 3. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 4. Data providers and state management
+- [x] 4. Data providers and state management
   - [x] 4.1 Create mock dataset JSON
     - Create `src/data/mockDataset.json` with at least 20 alerts spanning all 10 FraudCategory values, all 4 Severity levels, and all 3 IntelligenceTier values
     - Include varied provenance chains, machine tags (with mitre-attack namespace), galaxy matches, detection rules
     - Include signal sources with different source types, confidence levels, and guardrail results
     - _Requirements: 6.2, 6.4_
 
-  - [~] 4.2 Implement MockProvider
+  - [x] 4.2 Implement MockProvider
     - Create `src/data/mockProvider.ts` implementing DataProvider interface
     - `fetchDashboardSummary` computes summary from mock data using `computeDashboardSummary`
     - `fetchAlerts` applies filters and pagination to mock data
@@ -142,7 +142,7 @@ Build a React + TypeScript SPA using Vite, zustand, recharts, d3-force, and Tail
     - **Property 25: API response envelope structure**
     - **Validates: Requirements 6.5, 7.4**
 
-  - [~] 4.4 Implement LiveProvider
+  - [x] 4.4 Implement LiveProvider
     - Create `src/data/liveProvider.ts` implementing DataProvider interface
     - Use fetch API to call configured API Gateway endpoint
     - Implement exponential backoff retry for 5xx errors and timeouts (1s, 2s, 4s, max 30s)
@@ -150,7 +150,7 @@ Build a React + TypeScript SPA using Vite, zustand, recharts, d3-force, and Tail
     - Wrap responses in ApiResponse envelope with `dataSource: 'live'`
     - _Requirements: 6.3, 7.1, 7.4_
 
-  - [~] 4.5 Implement zustand store
+  - [x] 4.5 Implement zustand store
     - Create `src/store/appStore.ts` with zustand store managing:
       - `dashboardSummary`, `alertList`, `currentAlert`, `relationships`, `signalSources`
       - `filters`, `pagination`
@@ -160,17 +160,17 @@ Build a React + TypeScript SPA using Vite, zustand, recharts, d3-force, and Tail
     - Implement actions: `loadDashboard`, `loadAlerts`, `loadAlertDetail`, `loadRelationships`, `loadSignalSources`, `setFilters`, `setPage`
     - _Requirements: 7.3, 2.1–2.10_
 
-- [~] 5. Checkpoint - Ensure all tests pass
+- [x] 5. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 6. UI views — Dashboard and AlertList
-  - [~] 6.1 Implement app shell with React Router
+- [x] 6. UI views — Dashboard and AlertList
+  - [x] 6.1 Implement app shell with React Router
     - Create `src/App.tsx` with React Router setup for routes: `/`, `/alerts`, `/alerts/:alertId`, `/graph`, `/sources/:alertId`
     - Create `src/components/Layout.tsx` with navigation sidebar/header linking to Dashboard, Alerts, Graph
     - Create `src/components/LoadingSpinner.tsx` and `src/components/ErrorBoundary.tsx`
     - _Requirements: 3.1, 7.2, 7.3_
 
-  - [~] 6.2 Implement DashboardView
+  - [x] 6.2 Implement DashboardView
     - Create `src/views/DashboardView.tsx`
     - Render KPI tiles (total alerts, campaigns, active sources) using TailwindCSS cards
     - Render severity donut chart using recharts PieChart
@@ -180,7 +180,7 @@ Build a React + TypeScript SPA using Vite, zustand, recharts, d3-force, and Tail
     - Load data via store `loadDashboard` action on mount
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-  - [~] 6.3 Implement AlertListView
+  - [x] 6.3 Implement AlertListView
     - Create `src/views/AlertListView.tsx`
     - Create `src/components/FilterSidebar.tsx` with multi-select facets for category, severity, tier, time range picker, and search input
     - Create `src/components/AlertCard.tsx` for rendering individual alert summaries
@@ -189,8 +189,8 @@ Build a React + TypeScript SPA using Vite, zustand, recharts, d3-force, and Tail
     - Navigate to AlertDetail on card click
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10, 3.1_
 
-- [ ] 7. UI views — AlertDetail and SignalSources
-  - [~] 7.1 Implement AlertDetailView
+- [x] 7. UI views — AlertDetail and SignalSources
+  - [x] 7.1 Implement AlertDetailView
     - Create `src/views/AlertDetailView.tsx`
     - Display alert severity badge, TTP description, affected institutions as chips, creation timestamp, alert type
     - Render ProvenanceChain as vertical stepper (CrawlingEngine → ContentAnalyst → DataStructurer → TaggingEngine → AlertGenerator)
@@ -200,7 +200,7 @@ Build a React + TypeScript SPA using Vite, zustand, recharts, d3-force, and Tail
     - Handle non-existent alertId with "Alert not found" message and link back to AlertList
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
 
-  - [~] 7.2 Implement SignalSourcesView
+  - [x] 7.2 Implement SignalSourcesView
     - Create `src/views/SignalSourcesView.tsx`
     - Create `src/components/SignalSourceCard.tsx` as expandable card showing source type, crawl timestamp, confidence
     - Render confidence as color-coded progress bar (0.0–1.0)
@@ -209,8 +209,8 @@ Build a React + TypeScript SPA using Vite, zustand, recharts, d3-force, and Tail
     - Redact source URLs using `redactUrl` utility
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 8. UI views — Relationship Graph
-  - [~] 8.1 Implement RelationshipGraphView
+- [x] 8. UI views — Relationship Graph
+  - [x] 8.1 Implement RelationshipGraphView
     - Create `src/views/RelationshipGraphView.tsx`
     - Implement force-directed graph using d3-force simulation (forceLink, forceCharge, forceCenter)
     - Color-code nodes by type (alert=red, institution=blue, ttp=orange, entity=green, campaign=purple)
@@ -222,24 +222,24 @@ Build a React + TypeScript SPA using Vite, zustand, recharts, d3-force, and Tail
     - Add entity type filter controls to narrow graph scope
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8_
 
-- [~] 9. Checkpoint - Ensure all tests pass
+- [x] 9. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 10. Integration, error handling, and final wiring
-  - [~] 10.1 Wire data provider initialization and mode switching
+- [x] 10. Integration, error handling, and final wiring
+  - [x] 10.1 Wire data provider initialization and mode switching
     - Create `src/config.ts` with app configuration (dataMode: 'mock' | 'live', apiBaseUrl, apiKey)
     - Initialize the appropriate provider in `src/main.tsx` based on config
     - Add a visual indicator showing current data source mode (mock vs live) in the app header
     - _Requirements: 6.2, 6.3, 6.5_
 
-  - [~] 10.2 Implement error boundaries and resilience UI
+  - [x] 10.2 Implement error boundaries and resilience UI
     - Implement React error boundary wrapping each view for graceful fallback
     - Add "Data may be stale" banner when live API retry is in progress
     - Implement minimal hardcoded fallback data (3 alerts) for mock data corruption scenario
     - Add loading indicators per view area during data fetches
     - _Requirements: 7.1, 7.2, 7.3_
 
-  - [~] 10.3 Final integration and route wiring
+  - [x] 10.3 Final integration and route wiring
     - Ensure all views are connected via React Router and navigation works end-to-end
     - Verify filter state persists when navigating between views
     - Verify AlertList → AlertDetail → SignalSources navigation flow
@@ -255,7 +255,7 @@ Build a React + TypeScript SPA using Vite, zustand, recharts, d3-force, and Tail
     - Test navigation between views preserves filter state
     - _Requirements: 1.1–1.5, 2.1–2.10, 3.1–3.7, 4.1–4.8_
 
-- [~] 11. Final checkpoint - Ensure all tests pass
+- [x] 11. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
