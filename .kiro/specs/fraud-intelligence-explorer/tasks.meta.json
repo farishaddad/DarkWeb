@@ -1,0 +1,323 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Initialize Vite + React + TypeScript project with Tailwind CSS": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210225
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201222334
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201758331
+      }
+    ],
+    "1.2 Define core TypeScript type definitions": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210315
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201223521
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201732924
+      }
+    ],
+    "1.3 Create DataProvider interface and provider factory": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210367
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201763990
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784204508955
+      }
+    ],
+    "1.4 Set up Vitest testing framework": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210396
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201765296
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784204507808
+      }
+    ],
+    "2.1 Implement input validation utilities": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210425
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784204515403
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784205178120
+      }
+    ],
+    "2.3 Implement dashboard aggregation algorithm": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210449
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784204516243
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784205405894
+      }
+    ],
+    "2.5 Implement filter algorithm": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210477
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784204516858
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784205405189
+      }
+    ],
+    "2.7 Implement pagination utility": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210506
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784204517536
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784205178832
+      }
+    ],
+    "2.9 Implement relationship graph construction algorithm": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210532
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784204518937
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784205180152
+      }
+    ],
+    "2.11 Implement URL redaction and tag grouping utilities": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210565
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784205187776
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784205406720
+      }
+    ],
+    "3. Checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210600
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784205408221
+      }
+    ],
+    "4.1 Create mock dataset JSON": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210624
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784205422529
+      },
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784206805803
+      }
+    ],
+    "4.2 Implement MockProvider": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210650
+      }
+    ],
+    "4.4 Implement LiveProvider": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210672
+      }
+    ],
+    "4.5 Implement zustand store": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210720
+      }
+    ],
+    "5. Checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210743
+      }
+    ],
+    "6.1 Implement app shell with React Router": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210769
+      }
+    ],
+    "6.2 Implement DashboardView": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210799
+      }
+    ],
+    "6.3 Implement AlertListView": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210842
+      }
+    ],
+    "7.1 Implement AlertDetailView": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210871
+      }
+    ],
+    "7.2 Implement SignalSourcesView": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210900
+      }
+    ],
+    "8.1 Implement RelationshipGraphView": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210949
+      }
+    ],
+    "9. Checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201210998
+      }
+    ],
+    "10.1 Wire data provider initialization and mode switching": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201211029
+      }
+    ],
+    "10.2 Implement error boundaries and resilience UI": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201211064
+      }
+    ],
+    "10.3 Final integration and route wiring": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201211111
+      }
+    ],
+    "11. Final checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784201211142
+      }
+    ],
+    "1. Project scaffolding and core type definitions": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784204508977
+      }
+    ],
+    "2. Data transformation and validation logic": [
+      {
+        "executionId": "df1f461e-d058-4875-bc5b-363209a94661",
+        "chatSessionId": "sess_210d4775-4605-47db-b9ca-89013a972699",
+        "timestamp": 1784205406749
+      }
+    ]
+  }
+}
