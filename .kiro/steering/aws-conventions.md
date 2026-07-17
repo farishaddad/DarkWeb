@@ -1,75 +1,50 @@
-# AWS Conventions — Dark Web Fraud Agent
+# AWS Conventions — DarkWeb Fraud Intelligence Agent
 
-## CDK v2 imports
-```python
-from aws_cdk import (
-    aws_dynamodb as dynamodb,
-    aws_iam as iam,
-    aws_lambda as lambda_,
-    aws_stepfunctions as sfn,
-    aws_stepfunctions_tasks as tasks,
-)
-from constructs import Construct
-```
+## Stack Architecture
+- **4 CDK stacks** deployed in order: Core → Intelligence → Compute → Pipeline
+- **Anti-cycle pattern**: `from_*_arn()` + SSM StringParameter for cross-stack ARN passing
+- **No L2 cross-stack construct references** — causes CDK DependencyCycle errors
 
-## Lambda sizing
-| Agent | Memory | Timeout | Architecture |
-|-------|--------|---------|-------------|
-| ContentAnalyst | 1024 MB | 300s | ARM64 |
-| DataStructurer | 512 MB | 120s | ARM64 |
-| TaggingEngine | 512 MB | 60s | ARM64 |
-| AlertGenerator | 256 MB | 60s | ARM64 |
+## Lambda
+- Runtime: Python 3.12 (upgrading to 3.13)
+- Architecture: x86_64 (upgrading to ARM64)
+- NOT in VPC — reaches AWS services via public HTTPS + IAM SigV4
+- Module-level boto3 clients for connection reuse across warm invocations
+- Handler convention: `dark_web_fraud_agent.agents.<module>.handler`
+- All handlers call `update_health()` at end for CloudWatch EMF metrics
 
-## DynamoDB key schema
-ConvergenceTable PK/SK:
-- TTP items: `PK = "CONV#<ttp_reference>"`, `SK = "ITEM#<stix_id>"`
-- Entity items: `PK = "ENTITY#<entity_type>#<value_lower>"`, `SK = "ITEM#<stix_id>"`
-- All items carry `TTL` epoch attribute for auto-expiry.
+## ECS Fargate
+- Crawling Engine runs as Fargate task (Private subnet, NAT Gateway for Tor egress)
+- Two containers: app (crawling-engine) + sidecar (tor-socks-proxy)
+- App waits for sidecar HEALTHY before starting
+- ECR repo: `dark-web-fraud/crawling-engine`
 
-## GSI — entity-cooccurrence-index
-- Index name: `entity-cooccurrence-index`  (set by CDK, injected as `ENTITY_INDEX_NAME` env var)
-- PK: `PK` (STRING) — queries `ENTITY#bank_name#<institution>` items
-- SK: `SK` (STRING)
-- Projection: ALL
-- Billing: inherits PAY_PER_REQUEST from table
+## Step Functions
+- Express Workflow (not Standard) — high-frequency 5-min cadence
+- ECS launch via `CallAwsService` SDK integration (not L2 EcsRunTask)
+- Lambda invocation via `LambdaInvoke` task states
+- Cluster ARN, Task Def ARN, Lambda ARNs passed via SSM
 
-## IAM grants (CDK)
-```python
-# Full read/write including GSI Query:
-core_stack.convergence_table.grant_read_write_data(lambda_role)
-# S3 prefixed access:
-core_stack.artifacts_bucket.grant_read(lambda_role)
-core_stack.artifacts_bucket.grant_put(lambda_role)
-```
+## Messaging
+- FIFO SNS topic → FIFO SQS queue (ordered, exactly-once alert delivery)
+- SNS topic lives in ComputeStack (same stack as AlertGenerator Lambda)
+- PipelineStack imports topic ARN via SSM StringParameter
 
-## Step Functions payload contract
-```json
-{
-  "s3_key": "crawl-artifacts/...",
-  "execution_id": "<SFN execution ARN>",
-  "entities": [{"entity_type": "bank_name", "value": "HSBC", ...}],
-  "fraud_category": "money_mule",
-  "severity_score": 9,
-  "stix_bundle_key": "stix-bundles/...",
-  "tags": ["mitre-attack:technique=\"T1531\"", ...],
-  "tier": "observable"
-}
-```
+## DynamoDB
+- On-Demand billing (bursty access pattern)
+- CMK encryption at rest
+- Convergence table: DynamoDB Streams (NEW_AND_OLD_IMAGES) triggers AlertGenerator
+- TTL on convergence items (auto-expire after 24h window)
 
-## CloudWatch custom metrics
-Namespace: `dark-web-fraud`
-| Metric name | Unit | Dimensions |
-|-------------|------|-----------|
-| `EntityCooccurrenceAlerts` | Count | `AlertType=composite` |
-| `TTPConvergenceAlerts` | Count | — |
-| `ImmediateSeverityAlerts` | Count | — |
+## Security
+- KMS CMK with annual rotation for all data at rest
+- S3: enforce_ssl, block_public_access, Object Lock, bucket_key_enabled
+- Per-agent IAM roles with least-privilege (scoping in progress)
+- Secrets Manager for Tor + MISP credentials
 
-Publish in `AlertGenerator.publish_alert()` via `boto3.client("cloudwatch").put_metric_data()`.
-
-## Bedrock model ID
-`anthropic.claude-opus-4-8-20260601-v1:0` — do not hardcode; read from `BEDROCK_MODEL_ID` env var.
-
-## Naming conventions
-- Lambda functions: `dark-web-fraud-<agent-name>` (e.g. `dark-web-fraud-content-analyst`)
-- DynamoDB tables: `dark-web-fraud-<purpose>` (e.g. `dark-web-fraud-convergence`)
-- SSM parameters: `/dark-web-fraud/<resource>/<attribute>` (e.g. `/dark-web-fraud/lambda/alert-generator-arn`)
+## DO NOT
+- Add Lambda VPC placement (causes CDK dependency cycles)
+- Use L2 EcsRunTask from PipelineStack (creates cross-stack construct refs)
+- Change from FIFO to Standard messaging (ordered delivery required)
+- Change DynamoDB to Provisioned (access pattern is bursty)
+- Remove S3 Object Lock (forensic integrity requirement)
