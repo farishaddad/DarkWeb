@@ -21,6 +21,13 @@ def handler(event: dict, context) -> dict:
             "tier": "ttp",
         }
     """
+    # Input validation
+    if not isinstance(event, dict):
+        raise ValueError(f"Expected dict event, got {type(event).__name__}")
+    missing = [f for f in ["s3_key"] if f not in event]
+    if missing:
+        raise ValueError(f"Missing required fields: {missing}")
+
     s3_key: str = event["s3_key"]
     execution_id: str = event.get("execution_id", "unknown")
     stix_bundle_key: str | None = event.get("stix_bundle_key")

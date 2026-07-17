@@ -932,6 +932,13 @@ def handler(event: dict, context) -> dict:
 
     Returns a dict consumed as input by the next Step Functions state.
     """
+    # Input validation
+    if not isinstance(event, dict):
+        raise ValueError(f"Expected dict event, got {type(event).__name__}")
+    missing = [f for f in ["s3_key"] if f not in event]
+    if missing:
+        raise ValueError(f"Missing required fields: {missing}")
+
     s3_key = event["s3_key"]
     execution_id = event.get("execution_id", "unknown")
 

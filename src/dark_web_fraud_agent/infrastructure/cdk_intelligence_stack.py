@@ -154,6 +154,7 @@ class DarkWebFraudIntelligenceStack(Stack):
             name="threat-intel",
             type="VECTORSEARCH",
             description="Threat intelligence vector search — dark web fraud patterns",
+            standby_replicas="DISABLED",  # Halves baseline OCU cost for dev/test
         )
         self.opensearch_collection.add_dependency(encryption_policy)
         self.opensearch_collection.add_dependency(network_policy)

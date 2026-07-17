@@ -47,3 +47,41 @@ They are **complementary** — MISP can ingest and export STIX, and STIX-formatt
 ## Relevance to This Project
 
 The Dark Web Fraud Intelligence Agent produces output in **STIX 2.1 / MISP format**, meaning its findings — threat actors, fraud patterns, and indicators of compromise — are structured in these standards. This makes them directly consumable by any SOC tool or threat intelligence platform that supports them.
+
+
+---
+
+## Extended Coverage (v0.2.0)
+
+The Dark Web Fraud Intelligence Agent now produces STIX 2.1 / MISP output covering:
+
+### Fraud Categories → STIX Attack Patterns (SDOs)
+| Category | MITRE ATT&CK ID | STIX SDO |
+|----------|-----------------|----------|
+| `mfa_bypass` | T1111 | Attack Pattern |
+| `synthetic_identity` | T1585 | Attack Pattern |
+| `phishing_kit` | T1566 | Attack Pattern |
+| `cnp_fraud` | T1539 | Attack Pattern |
+| `account_takeover` | T1078 | Attack Pattern |
+| `new_account_fraud` | T1136 | Attack Pattern |
+| `recurring_billing_fraud` | T1565 | Attack Pattern |
+| `money_mule` | T1537 | Attack Pattern |
+| `investment_fraud` | T1583 | Attack Pattern |
+| `social_engineering` | T1598 | Attack Pattern |
+
+### Entity Types → STIX Cyber-observable Objects (SCOs)
+| Entity Type | STIX SCO | MISP Attribute |
+|-------------|----------|----------------|
+| `bank_name` | Identity (organization) | `target-org` |
+| `bin_range` | Artifact (custom) | `bank-card-bin` |
+| `swift_code` | Artifact (custom) | `swift-bic` |
+| `btc_wallet` | Artifact (crypto) | `btc` |
+| `monero_wallet` | Artifact (crypto) | `xmr` |
+| `email` | EmailAddress | `email-src` |
+| `url` | URL | `url` |
+| `ip_address` | IPv4Address | `ip-src` |
+| `merchant_id` | Artifact (custom) | `payment-merchant-id` |
+| `acquiring_bin` | Artifact (custom) | `payment-acquiring-bin` |
+| `national_id` | Artifact (identity) | `national-id` |
+| `sort_code` | Artifact (custom) | `bank-sort-code` |
+| `iban` | Artifact (custom) | `iban` |

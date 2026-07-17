@@ -52,18 +52,20 @@ def _make_alert(
 class TestPublishAlert:
     """Tests for AlertGenerator.publish_alert()."""
 
-    @pytest.mark.asyncio
-    async def test_publish_alert_returns_message_id(self):
+    def test_publish_alert_returns_message_id(self):
         """publish_alert should return an SNS MessageId and set it on the alert."""
         with mock_aws():
             sns_client = boto3.client("sns", region_name="us-east-1")
-            topic = sns_client.create_topic(Name="fraud-alerts")
+            topic = sns_client.create_topic(
+                Name="fraud-alerts.fifo",
+                Attributes={"FifoTopic": "true", "ContentBasedDeduplication": "true"},
+            )
             topic_arn = topic["TopicArn"]
 
             generator = AlertGenerator()
             alert = _make_alert()
 
-            message_id = await generator.publish_alert(
+            message_id = generator.publish_alert(
                 alert, topic_arn, sns_client=sns_client
             )
 
@@ -71,12 +73,14 @@ class TestPublishAlert:
             assert len(message_id) > 0
             assert alert.sns_message_id == message_id
 
-    @pytest.mark.asyncio
-    async def test_publish_alert_sends_json_message(self):
+    def test_publish_alert_sends_json_message(self):
         """publish_alert should publish the alert formatted as JSON."""
         with mock_aws():
             sns_client = boto3.client("sns", region_name="us-east-1")
-            topic = sns_client.create_topic(Name="fraud-alerts")
+            topic = sns_client.create_topic(
+                Name="fraud-alerts.fifo",
+                Attributes={"FifoTopic": "true", "ContentBasedDeduplication": "true"},
+            )
             topic_arn = topic["TopicArn"]
 
             # Subscribe an SQS queue to verify message content
@@ -94,7 +98,7 @@ class TestPublishAlert:
             generator = AlertGenerator()
             alert = _make_alert()
 
-            await generator.publish_alert(alert, topic_arn, sns_client=sns_client)
+            generator.publish_alert(alert, topic_arn, sns_client=sns_client)
 
             # Verify message was received
             messages = sqs_client.receive_message(
@@ -107,13 +111,15 @@ class TestPublishAlert:
             assert alert_payload["alert_type"] == "ttp_alert"
             assert alert_payload["severity"] == "high"
 
-    @pytest.mark.asyncio
-    async def test_publish_alert_creates_client_if_not_provided(self):
+    def test_publish_alert_creates_client_if_not_provided(self):
         """publish_alert should create a boto3 SNS client if none provided."""
         with mock_aws():
             # Create topic via separate client
             setup_client = boto3.client("sns", region_name="us-east-1")
-            topic = setup_client.create_topic(Name="fraud-alerts")
+            topic = setup_client.create_topic(
+                Name="fraud-alerts.fifo",
+                Attributes={"FifoTopic": "true", "ContentBasedDeduplication": "true"},
+            )
             topic_arn = topic["TopicArn"]
 
             generator = AlertGenerator()
@@ -121,23 +127,25 @@ class TestPublishAlert:
 
             # Pass sns_client explicitly (moto doesn't mock the default client
             # outside the context), but test the path works
-            message_id = await generator.publish_alert(
+            message_id = generator.publish_alert(
                 alert, topic_arn, sns_client=setup_client
             )
             assert message_id is not None
 
-    @pytest.mark.asyncio
-    async def test_publish_alert_sets_message_attributes(self):
+    def test_publish_alert_sets_message_attributes(self):
         """publish_alert should set alert_type and severity as message attributes."""
         with mock_aws():
             sns_client = boto3.client("sns", region_name="us-east-1")
-            topic = sns_client.create_topic(Name="fraud-alerts")
+            topic = sns_client.create_topic(
+                Name="fraud-alerts.fifo",
+                Attributes={"FifoTopic": "true", "ContentBasedDeduplication": "true"},
+            )
             topic_arn = topic["TopicArn"]
 
             generator = AlertGenerator()
             alert = _make_alert(alert_type="campaign_alert", severity="critical")
 
-            message_id = await generator.publish_alert(
+            message_id = generator.publish_alert(
                 alert, topic_arn, sns_client=sns_client
             )
             # If publish succeeded with attributes, the message_id is valid

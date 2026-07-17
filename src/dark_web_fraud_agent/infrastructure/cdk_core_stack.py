@@ -31,6 +31,7 @@ from aws_cdk import (
     aws_kms as kms,
     aws_s3 as s3,
     aws_secretsmanager as secretsmanager,
+    aws_ssm as ssm,
 )
 from constructs import Construct
 
@@ -301,6 +302,14 @@ class DarkWebFraudCoreStack(Stack):
             encryption_key=self.kms_key,
         )
 
+        # TODO: Add rotation schedule once MISP rotation Lambda is implemented.
+        # Requires either rotation_lambda= or hosted_rotation= parameter.
+        # self.misp_api_key.add_rotation_schedule(
+        #     "MispKeyRotation",
+        #     automatically_after=Duration.days(30),
+        #     rotation_lambda=misp_rotation_fn,
+        # )
+
         # =================================================================
         # IAM Roles — least-privilege per agent
         # =================================================================
@@ -426,6 +435,24 @@ class DarkWebFraudCoreStack(Stack):
                 },
                 effect=iam.Effect.ALLOW,
             )
+        )
+
+        # =================================================================
+        # Security monitoring — GuardDuty + Security Hub (account-level, idempotent)
+        # =================================================================
+        from aws_cdk import aws_guardduty as guardduty, aws_securityhub as securityhub
+
+        guardduty.CfnDetector(
+            self,
+            "GuardDutyDetector",
+            enable=True,
+            finding_publishing_frequency="FIFTEEN_MINUTES",
+        )
+
+        securityhub.CfnHub(
+            self,
+            "SecurityHub",
+            enable_default_standards=True,
         )
 
         # =================================================================

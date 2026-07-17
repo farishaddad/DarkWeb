@@ -25,6 +25,21 @@ The convergence of three technologies makes an automated solution viable:
 - **Threat intelligence standards** (STIX 2.1, MISP) provide a universal language for structuring, correlating, and sharing fraud intelligence across organisations.
 
 ---
+---
+
+## What's New (July 2026 Enhancements)
+
+| Enhancement | Description |
+|-------------|-------------|
+| **Extended taxonomy** | 5 new fraud categories (new account fraud, recurring billing fraud, money mule, investment fraud, social engineering) + 6 new entity types (merchant_id, acquiring_bin, national_id, sort_code, iban, monero_wallet) |
+| **Coached-secrecy override** | Pig-butchering detection: keyword markers force `social_engineering` classification regardless of LLM output |
+| **Record-count severity boost** | Large dumps (≥5k records) auto-boost severity by +2, triggering immediate alerts without waiting for convergence |
+| **Entity co-occurrence** | Cross-signal composite alerting: same institution in signals from different tiers (observable + TTP) fires a composite alert (CHAPS-026 pattern) |
+| **Technique-specific Sigma rules** | Detection logic customised per ATT&CK technique instead of static EventID matching |
+| **Standard Workflow** | Switched from Express to Standard Step Functions for cost-efficiency and no timeout risk |
+| **Single-table DynamoDB** | Convergence + entity co-occurrence on one table (no GSI needed) via PK namespace prefixes |
+
+
 
 ## Approach
 
@@ -97,7 +112,7 @@ The system is built entirely on AWS services, leveraging the latest launches fro
 | Service | Role | NY Summit 2026 Feature |
 |---------|------|------------------------|
 | Amazon Bedrock AgentCore | Agent runtime — declarative agent definition | AgentCore Harness (GA) |
-| Claude Opus 4.8 | LLM for content analysis and entity extraction | Available on Bedrock |
+| Claude Sonnet 4 / Claude Opus 4 | LLM for content classification, entity extraction, and severity scoring | Available on Bedrock |
 | AgentCore Managed KB | RAG over historical threat intel | Smart Parsing + Agentic Retriever |
 | Bedrock Guardrails | Content safety for dark web material | AgentCore Policy Integrations |
 | AgentCore Optimization | Production trace analysis, A/B testing | Failure/intent/trajectory insights |
@@ -115,10 +130,10 @@ The system is built entirely on AWS services, leveraging the latest launches fro
 
 1. **EventBridge** triggers the Step Functions state machine every 5 minutes
 2. **Crawling Engine** connects to Tor via VPC-isolated SOCKS5 proxies, rotates circuits on failure, stores raw HTML in S3 with metadata annotations
-3. **Content Analyst** applies Bedrock Guardrails for safety, classifies content via Claude Opus 4.8, extracts entities (BINs, SWIFT codes, wallets, IPs, emails) using LLM + regex fallback
+3. **Content Analyst** applies Bedrock Guardrails for safety, classifies content via Claude (Sonnet 4 for classification, Opus 4 for structuring), extracts entities (BINs, SWIFT codes, wallets, IPs, emails, MIDs, IBANs, Monero wallets, sort codes, national IDs) using LLM + regex fallback
 4. **Data Structurer** creates STIX 2.1 objects (SDOs, SCOs, SROs), classifies intelligence tier, generates embeddings, indexes into OpenSearch VECTORSEARCH
 5. **Tagging Engine** applies MITRE ATT&CK tags, custom fraud taxonomy, threat-level tags, and links to MISP Galaxy clusters
-6. **Alert Generator** tracks convergence — when 3+ items reference the same TTP within 24 hours, generates a consolidated campaign alert and publishes to SNS
+6. **Alert Generator** tracks convergence and cross-entity co-occurrence — when 3+ items reference the same TTP within 24 hours, generates a consolidated campaign alert and publishes to SNS
 
 ---
 

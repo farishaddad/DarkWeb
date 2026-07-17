@@ -331,39 +331,44 @@ class DarkWebFraudPipelineStack(Stack):
         # Scheduler (not just Rule) supports DLQ for missed invocations and
         # flexible invocation windows. The Rule is kept as a fallback.
         # =====================================================================
-        self.schedule_rule = events.Rule(
+        # =====================================================================
+        # EventBridge Scheduler — every 5 minutes (replaces EventBridge Rule)
+        # Scheduler supports time zones, flexible windows, built-in DLQ per schedule.
+        # =====================================================================
+        from aws_cdk import aws_scheduler as scheduler
+
+        scheduler_role = iam.Role(
             self,
-            "CrawlScheduleRule",
-            rule_name="dark-web-fraud-crawl-schedule",
-            description="Trigger the dark web fraud pipeline every 5 minutes",
-            schedule=events.Schedule.rate(Duration.minutes(5)),
-            enabled=True,
-        )
-        self.schedule_rule.add_target(
-            targets.SfnStateMachine(
-                self.state_machine,
-                # Pass a minimal seed input; the crawl task derives its sources
-                # from the SourceDefinitions in SSM / AppConfig (future enhancement)
-                input=events.RuleTargetInput.from_object(
-                    {"trigger": "scheduled", "source": "eventbridge"}
-                ),
-                dead_letter_queue=self.dlq,
-                role=iam.Role(
-                    self,
-                    "EventBridgeInvokeRole",
-                    assumed_by=iam.ServicePrincipal("events.amazonaws.com"),
-                    inline_policies={
-                        "StartExecution": iam.PolicyDocument(
-                            statements=[
-                                iam.PolicyStatement(
-                                    actions=["states:StartExecution"],
-                                    resources=[self.state_machine.state_machine_arn],
-                                )
-                            ]
+            "SchedulerInvokeRole",
+            assumed_by=iam.ServicePrincipal("scheduler.amazonaws.com"),
+            inline_policies={
+                "StartExecution": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            actions=["states:StartExecution"],
+                            resources=[self.state_machine.state_machine_arn],
                         )
-                    },
+                    ]
+                )
+            },
+        )
+
+        self.crawl_schedule = scheduler.CfnSchedule(
+            self,
+            "CrawlSchedule",
+            name="dark-web-fraud-crawl-schedule",
+            schedule_expression="rate(5 minutes)",
+            flexible_time_window=scheduler.CfnSchedule.FlexibleTimeWindowProperty(
+                mode="OFF"  # Exact timing for intelligence freshness
+            ),
+            target=scheduler.CfnSchedule.TargetProperty(
+                arn=self.state_machine.state_machine_arn,
+                role_arn=scheduler_role.role_arn,
+                input='{"trigger":"scheduled","source":"eventbridge-scheduler"}',
+                dead_letter_config=scheduler.CfnSchedule.DeadLetterConfigProperty(
+                    arn=self.dlq.queue_arn
                 ),
-            )
+            ),
         )
 
         # =====================================================================
@@ -418,6 +423,49 @@ class DarkWebFraudPipelineStack(Stack):
             alarm_description="Crawling Engine Fargate task failures in 15-minute window",
             comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
             treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+        )
+
+        # Lambda duration alarm — detect Bedrock throttling early
+        # (4 min = 80% of the 5-min timeout)
+        self.content_analyst_duration_alarm = cloudwatch.Alarm(
+            self,
+            "ContentAnalystDurationAlarm",
+            metric=cloudwatch.Metric(
+                namespace="AWS/Lambda",
+                metric_name="Duration",
+                dimensions_map={"FunctionName": "dark-web-fraud-content-analyst"},
+                statistic="p95",
+                period=Duration.minutes(5),
+            ),
+            threshold=240_000,  # 4 minutes in ms
+            evaluation_periods=2,
+            alarm_description="Content Analyst P95 latency > 4 min — Bedrock may be throttling",
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+        )
+        self.content_analyst_duration_alarm.add_alarm_action(
+            cw_actions.SnsAction(self.alert_topic)
+        )
+
+        # Bedrock throttle alarm
+        self.bedrock_throttle_alarm = cloudwatch.Alarm(
+            self,
+            "BedrockThrottleAlarm",
+            metric=cloudwatch.Metric(
+                namespace="AWS/Bedrock",
+                metric_name="InvocationThrottles",
+                dimensions_map={"ModelId": "anthropic.claude-opus-4-5"},
+                statistic="Sum",
+                period=Duration.minutes(5),
+            ),
+            threshold=5,
+            evaluation_periods=1,
+            alarm_description="Bedrock throttling > 5 requests per 5-min — increase provisioned throughput",
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+        )
+        self.bedrock_throttle_alarm.add_alarm_action(
+            cw_actions.SnsAction(self.alert_topic)
         )
 
         # =====================================================================

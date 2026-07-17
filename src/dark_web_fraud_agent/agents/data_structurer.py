@@ -930,6 +930,13 @@ def handler(event: dict, context) -> dict:
     import logging
     logger = logging.getLogger(__name__)
 
+    # Input validation
+    if not isinstance(event, dict):
+        raise ValueError(f"Expected dict event, got {type(event).__name__}")
+    missing = [f for f in ["s3_key", "is_fraud_relevant"] if f not in event]
+    if missing:
+        raise ValueError(f"Missing required fields: {missing}")
+
     s3_key: str = event["s3_key"]
     execution_id: str = event.get("execution_id", "unknown")
     is_relevant: bool = event.get("is_fraud_relevant", False)

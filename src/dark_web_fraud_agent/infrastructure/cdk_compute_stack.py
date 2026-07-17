@@ -142,7 +142,11 @@ class DarkWebFraudComputeStack(Stack):
         ))
         self.crawl_task_role.add_to_policy(iam.PolicyStatement(
             actions=['kms:Decrypt','kms:GenerateDataKey'],
-            resources=["*"],  # KMS key - cross-stack ARN removed to avoid dep cycle
+            resources=[
+                ssm.StringParameter.value_for_string_parameter(
+                    self, "/dark-web-fraud/kms-key-arn"
+                )
+            ],
         ))
         # X-Ray tracing
         self.crawl_task_role.add_to_policy(
@@ -343,8 +347,10 @@ class DarkWebFraudComputeStack(Stack):
             iam.PolicyStatement(
                 sid="BedrockInference",
                 actions=["bedrock:InvokeModel", "bedrock:ApplyGuardrail"],
-                # Scope to specific model ARN(s) in production
-                resources=["*"],
+                resources=[
+                    f"arn:aws:bedrock:{region}::foundation-model/anthropic.claude-*",
+                    f"arn:aws:bedrock:{region}::foundation-model/amazon.titan-embed-*",
+                ],
             )
         )
         analyst_role.add_to_policy(
@@ -352,7 +358,9 @@ class DarkWebFraudComputeStack(Stack):
                 sid="AgentCoreKB",
                 # IAM namespace is bedrock-agentcore: (not bedrock-agentcore-control:)
                 actions=["bedrock-agentcore:Retrieve", "bedrock-agentcore:RetrieveAndGenerate"],
-                resources=["*"],
+                resources=[
+                    f"arn:aws:bedrock-agentcore:{region}:{account}:*"
+                ],
             )
         )
         analyst_role.add_to_policy(
@@ -368,7 +376,11 @@ class DarkWebFraudComputeStack(Stack):
         ))
         analyst_role.add_to_policy(iam.PolicyStatement(
             actions=['kms:Decrypt'],
-            resources=["*"],  # KMS key - cross-stack ARN removed to avoid dep cycle
+            resources=[
+                ssm.StringParameter.value_for_string_parameter(
+                    self, "/dark-web-fraud/kms-key-arn"
+                )
+            ],
         ))
 
         self.content_analyst_fn = lambda_.Function(
@@ -404,7 +416,9 @@ class DarkWebFraudComputeStack(Stack):
             iam.PolicyStatement(
                 sid="BedrockEmbeddings",
                 actions=["bedrock:InvokeModel"],
-                resources=["*"],  # Scope to Titan embed model ARN
+                resources=[
+                    f"arn:aws:bedrock:{region}::foundation-model/amazon.titan-embed-*",
+                ],
             )
         )
         structurer_role.add_to_policy(
@@ -431,7 +445,11 @@ class DarkWebFraudComputeStack(Stack):
         ))
         structurer_role.add_to_policy(iam.PolicyStatement(
             actions=['kms:Decrypt','kms:GenerateDataKey'],
-            resources=["*"],  # KMS key - cross-stack ARN removed to avoid dep cycle
+            resources=[
+                ssm.StringParameter.value_for_string_parameter(
+                    self, "/dark-web-fraud/kms-key-arn"
+                )
+            ],
         ))
 
         self.data_structurer_fn = lambda_.Function(
@@ -468,7 +486,9 @@ class DarkWebFraudComputeStack(Stack):
             iam.PolicyStatement(
                 sid="AgentCoreKBRead",
                 actions=["bedrock-agentcore:Retrieve"],
-                resources=["*"],
+                resources=[
+                    f"arn:aws:bedrock-agentcore:{region}:{account}:*"
+                ],
             )
         )
         tagging_role.add_to_policy(
@@ -488,7 +508,11 @@ class DarkWebFraudComputeStack(Stack):
         ))
         tagging_role.add_to_policy(iam.PolicyStatement(
             actions=['kms:Decrypt','kms:GenerateDataKey'],
-            resources=["*"],  # KMS key - cross-stack ARN removed to avoid dep cycle
+            resources=[
+                ssm.StringParameter.value_for_string_parameter(
+                    self, "/dark-web-fraud/kms-key-arn"
+                )
+            ],
         ))
 
         self.tagging_engine_fn = lambda_.Function(
@@ -568,7 +592,11 @@ class DarkWebFraudComputeStack(Stack):
         ))
         alert_role.add_to_policy(iam.PolicyStatement(
             actions=['kms:Decrypt','kms:GenerateDataKey'],
-            resources=["*"],  # KMS key - cross-stack ARN removed to avoid dep cycle
+            resources=[
+                ssm.StringParameter.value_for_string_parameter(
+                    self, "/dark-web-fraud/kms-key-arn"
+                )
+            ],
         ))
 
         self.alert_generator_fn = lambda_.Function(

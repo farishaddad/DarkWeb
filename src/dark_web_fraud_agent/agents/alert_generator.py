@@ -124,6 +124,14 @@ def handler(event: dict, context) -> dict:
     import logging
     logger = logging.getLogger(__name__)
 
+    # Input validation
+    if not isinstance(event, dict):
+        raise ValueError(f"Expected dict event, got {type(event).__name__}")
+    if "Records" not in event:  # Skip validation for DynamoDB Streams path
+        missing = [f for f in ["s3_key"] if f not in event]
+        if missing:
+            raise ValueError(f"Missing required fields: {missing}")
+
     sns_topic_arn: str = os.environ["SNS_TOPIC_ARN"]
     high_severity_threshold: int = int(os.environ.get("HIGH_SEVERITY_THRESHOLD", "7"))
 
@@ -469,15 +477,21 @@ class AlertGenerator(AgentBase):
         # DynamoDB persistence
         table = self._get_convergence_table()
         ttl = int((datetime.now(UTC) + self._convergence_window).timestamp())
-        table.put_item(Item={
-            "PK": f"CONV#{ttp_reference}",
-            "SK": f"ITEM#{stix_id}",
-            "stix_id": stix_id,
-            "ttp_reference": ttp_reference,
-            "tier": tier,
-            "timestamp": datetime.now(UTC).isoformat(),
-            "TTL": ttl,
-        })
+        try:
+            table.put_item(
+                Item={
+                    "PK": f"CONV#{ttp_reference}",
+                    "SK": f"ITEM#{stix_id}",
+                    "stix_id": stix_id,
+                    "ttp_reference": ttp_reference,
+                    "tier": tier,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "TTL": ttl,
+                },
+                ConditionExpression=Attr("SK").not_exists(),
+            )
+        except table.meta.client.exceptions.ConditionalCheckFailedException:
+            pass  # Item already tracked — idempotent, skip silently
 
         # Cross-entity co-occurrence: index each bank_name entity independently.
         # When the same institution appears in both a Source 1 credential listing
@@ -487,17 +501,23 @@ class AlertGenerator(AgentBase):
             for entity in entity_values:
                 if entity.get("entity_type") == "bank_name":
                     bank_key = f"ENTITY#bank_name#{entity['value'].lower()}"
-                    table.put_item(Item={
-                        "PK": bank_key,
-                        "SK": f"ITEM#{stix_id}",
-                        "stix_id": stix_id,
-                        "ttp_reference": ttp_reference,
-                        "tier": tier,
-                        "entity_type": "bank_name",
-                        "entity_value": entity["value"].lower(),
-                        "timestamp": datetime.now(UTC).isoformat(),
-                        "TTL": ttl,
-                    })
+                    try:
+                        table.put_item(
+                            Item={
+                                "PK": bank_key,
+                                "SK": f"ITEM#{stix_id}",
+                                "stix_id": stix_id,
+                                "ttp_reference": ttp_reference,
+                                "tier": tier,
+                                "entity_type": "bank_name",
+                                "entity_value": entity["value"].lower(),
+                                "timestamp": datetime.now(UTC).isoformat(),
+                                "TTL": ttl,
+                            },
+                            ConditionExpression=Attr("SK").not_exists(),
+                        )
+                    except table.meta.client.exceptions.ConditionalCheckFailedException:
+                        pass  # Entity already tracked — idempotent
 
     def check_campaign_convergence(
         self,
@@ -665,6 +685,8 @@ class AlertGenerator(AgentBase):
             TopicArn=sns_topic_arn,
             Message=message_body,
             Subject=f"FraudAlert [{alert.severity.upper()}]: {alert.alert_type}",
+            MessageGroupId=f"ttp-{alert.alert_type}",
+            MessageDeduplicationId=alert.alert_id,
             MessageAttributes={
                 "alert_type": {
                     "DataType": "String",
