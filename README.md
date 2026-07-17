@@ -57,7 +57,7 @@ This tiered approach follows the STIX 2.1 framework's graph-based model, where O
 ### Automated Tagging Strategy
 
 Intelligence is automatically classified using:
-- **MITRE ATT&CK technique IDs** (e.g., T1566 for phishing, T1110 for credential stuffing)
+- **MITRE ATT&CK technique IDs** (e.g., T1566/T1566.001 for phishing, T1078/T1078.001 for account takeover, T1111 for MFA bypass, T1585/T1585.001 for synthetic identity, T1539 for CNP fraud)
 - **Custom banking fraud taxonomy** (`fraud:type="mfa-bypass"`, `fraud:target="retail-bank"`)
 - **MISP Galaxy clusters** linking events to known threat actor profiles
 - **Threat level tags** derived from severity scoring (1-3: low, 4-6: medium, 7-9: high, 10: critical)
@@ -119,6 +119,40 @@ The system is built entirely on AWS services, leveraging the latest launches fro
 4. **Data Structurer** creates STIX 2.1 objects (SDOs, SCOs, SROs), classifies intelligence tier, generates embeddings, indexes into OpenSearch VECTORSEARCH
 5. **Tagging Engine** applies MITRE ATT&CK tags, custom fraud taxonomy, threat-level tags, and links to MISP Galaxy clusters
 6. **Alert Generator** tracks convergence — when 3+ items reference the same TTP within 24 hours, generates a consolidated campaign alert and publishes to SNS
+
+---
+
+### Combined Analysis (Cost Optimisation)
+
+The Content Analyst uses a **single Bedrock call** (`classify_and_extract_combined`) that returns fraud classification, entity extraction, and technique categorisation in one JSON response. This replaces the original 3-call pattern (classify → extract → categorise) and delivers:
+
+- **~3× cost reduction** — one prompt instead of three, with shared context
+- **~2× latency improvement** — single round-trip to Bedrock instead of three sequential calls
+- **Graceful fallback** — if the combined response fails to parse, the system falls back to the 3-call path automatically
+
+### Observability
+
+All Lambda handlers emit **CloudWatch Embedded Metric Format (EMF)** via the `update_health()` method in `AgentBase`. The Lambda runtime auto-converts EMF stdout to CloudWatch custom metrics — zero additional API calls needed.
+
+| Metric | Description |
+|--------|-------------|
+| `ItemsProcessed` | Items successfully processed per invocation |
+| `Errors` | Errors encountered per invocation |
+| `ProcessingThroughput` | Items per minute (exponential moving average) |
+| `BedrockTokens` | Bedrock tokens consumed |
+| `ErrorRate` | Error ratio for health status derivation |
+
+**Namespace:** `dark-web-fraud` · **Dimensions:** `agent_id`
+
+### Cross-Stack Architecture
+
+CDK multi-stack deployments create dependency cycles when constructs reference each other across stacks. This project uses an anti-cycle pattern:
+
+1. **ComputeStack** creates all Lambda functions, ECS resources, and the SNS topic, then **exports ARNs to SSM Parameter Store** (`/dark-web-fraud/lambda/*-arn`, `/dark-web-fraud/cluster-arn`, `/dark-web-fraud/alert-topic-arn`)
+2. **PipelineStack** reads SSM strings with `ssm.StringParameter.value_for_string_parameter()` and uses `from_*_arn()` to create non-owned L2 constructs — no `Fn::ImportValue` back-edges
+3. Step Functions invokes ECS via **`tasks.CallAwsService`** (raw SDK integration) rather than `tasks.EcsRunTask` (which requires L2 construct references that create cycles)
+
+This eliminates all CDK `DependencyCycle` errors while maintaining full type safety and deployment ordering.
 
 ---
 
@@ -286,11 +320,20 @@ dark-web-fraud-agent/
 │   ├── unit/                        # 300+ unit tests (22 test files)
 │   ├── property/                    # Property-based tests (hypothesis)
 │   └── integration/                 # Integration tests
+├── explorer/                        # Fraud Intelligence Explorer UI
+│   ├── src/
+│   │   ├── views/                   # 5 React views (Dashboard, AlertList, etc.)
+│   │   ├── components/              # Shared UI components (Layout, ErrorBoundary)
+│   │   ├── store/                   # zustand state management
+│   │   ├── data/                    # MockProvider, LiveProvider, mock dataset
+│   │   ├── utils/                   # Filters, pagination, graph, validation
+│   │   └── types/                   # Full TypeScript type definitions
+│   ├── package.json                 # React + Vite + Tailwind dependencies
+│   └── vite.config.ts              # Vite build configuration
 └── .kiro/
-    └── specs/dark-web-fraud-agent/  # Spec documentation
-        ├── requirements.md
-        ├── design.md
-        └── tasks.md
+    └── specs/
+        ├── dark-web-fraud-agent/    # Backend agent pipeline spec
+        └── fraud-intelligence-explorer/  # Explorer UI spec
 ```
 
 ---
@@ -309,6 +352,61 @@ dark-web-fraud-agent/
 | `hypothesis` | Property-based testing |
 | `moto` | AWS service mocking for tests |
 | `aws-cdk-lib` | Infrastructure as Code |
+
+---
+
+## Fraud Intelligence Explorer (UI)
+
+A React single-page application for exploring intelligence produced by the pipeline. Designed for demos and analyst use.
+
+### Features
+
+| View | Route | What it shows |
+|------|-------|---------------|
+| **Dashboard** | `/` | KPI tiles, severity donut chart, category bar chart, 30-day timeline, recent alerts |
+| **Alert List** | `/alerts` | Filterable list with facets (category, severity, tier, date, keyword search), sorting, pagination |
+| **Alert Detail** | `/alerts/:id` | Full provenance chain (5-step stepper), detection rules, machine tags, galaxy match |
+| **Signal Sources** | `/alerts/:id/sources` | Expandable source cards with confidence bars, entity tables, guardrail status |
+| **Relationship Graph** | `/graph` | d3-force visualization of entity/TTP/institution/campaign connections |
+
+### Quick Start
+
+```bash
+cd explorer
+npm install
+npm run dev
+# Open http://localhost:5173
+```
+
+The app runs in **mock mode** by default — no backend required. It ships with 24 realistic alerts covering all fraud categories.
+
+### Live Mode
+
+To connect to a deployed API Gateway:
+
+```bash
+VITE_DATA_MODE=live VITE_API_BASE_URL=https://your-api.execute-api.eu-west-2.amazonaws.com npm run dev
+```
+
+### Tech Stack
+
+| Library | Purpose |
+|---------|---------|
+| React 18 + TypeScript | UI framework |
+| Vite | Build tool + dev server |
+| Tailwind CSS | Styling |
+| zustand | State management |
+| recharts | Dashboard charts |
+| d3-force | Relationship graph |
+| React Router | Client-side routing |
+
+### Testing
+
+```bash
+cd explorer
+npm run test        # Run all tests (vitest)
+npm run build       # Production build
+```
 
 ---
 

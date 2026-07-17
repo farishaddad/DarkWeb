@@ -141,9 +141,9 @@
       <!-- Arrow: NAT → Internet -->
       <line x1="240" y1="387" x2="267" y2="387" stroke="#1f6feb" stroke-width="1.5" marker-end="url(#arrow)"/>
 
-      <!-- Isolated Subnet for Lambdas -->
-      <rect x="430" y="240" width="1210" height="175" rx="5" fill="rgba(31,111,235,0.05)" stroke="#1f6feb" stroke-width="1" stroke-dasharray="3,3"/>
-      <text x="445" y="258" font-size="9" fill="#58a6ff">Isolated Subnet (no internet — VPC Endpoints only)</text>
+      <!-- Lambda Functions — run outside VPC (public Bedrock/S3/DDB endpoints via IAM SigV4) -->
+      <rect x="430" y="240" width="1210" height="175" rx="5" fill="rgba(63,185,80,0.04)" stroke="#3fb950" stroke-width="1" stroke-dasharray="3,3"/>
+      <text x="445" y="258" font-size="9" fill="#58a6ff">Lambda Functions (outside VPC — public AWS endpoints via IAM SigV4)</text>
 
       <!-- Lambda 1: Content Analyst -->
       <rect x="460" y="280" width="180" height="70" rx="8" fill="#21262d" stroke="#f0883e" stroke-width="2" filter="url(#shadow)"/>
@@ -171,8 +171,8 @@
 
       <!-- VPC Interface Endpoints -->
       <rect x="1430" y="285" width="190" height="60" rx="8" fill="#21262d" stroke="#1f6feb" stroke-width="1.5"/>
-      <text x="1525" y="310" font-size="10" fill="#58a6ff" text-anchor="middle" font-weight="600">VPC Interface Endpoints</text>
-      <text x="1525" y="328" font-size="9" fill="#8b949e" text-anchor="middle">S3, DDB, Bedrock, SM, SNS</text>
+      <text x="1525" y="310" font-size="10" fill="#58a6ff" text-anchor="middle" font-weight="600">VPC Endpoints (Fargate)</text>
+      <text x="1525" y="328" font-size="9" fill="#8b949e" text-anchor="middle">ECR, Secrets Mgr, CW Logs (Fargate)</text>
 
       <!-- Pipeline arrows -->
       <line x1="290" y1="310" x2="455" y2="310" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrow)"/>
@@ -238,6 +238,12 @@
       <!-- Arrow: Bedrock serves Lambdas -->
       <path d="M 190 630 L 190 420 L 550 420 L 550 355" fill="none" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrow-green)" stroke-dasharray="4,2"/>
       <text x="300" y="415" font-size="9" fill="#3fb950">inference calls (via VPC Endpoint)</text>
+
+      
+      <!-- SSM Parameter Store — cross-stack ARN passing -->
+      <rect x="1430" y="360" width="190" height="50" rx="8" fill="#21262d" stroke="#e3b341" stroke-width="1.5"/>
+      <text x="1525" y="380" font-size="10" fill="#e3b341" text-anchor="middle" font-weight="600">SSM Parameter Store</text>
+      <text x="1525" y="396" font-size="9" fill="#8b949e" text-anchor="middle">Cross-stack ARN passing</text>
 
       <!-- ============ ALERTING ROW ============ -->
       <!-- SNS -->
@@ -420,7 +426,7 @@
         Step Functions passes the S3 artifact key to the <strong style="color:#f0f6fc;">Content Analyst Lambda</strong>. In a single <strong style="color:#f0f6fc;">Amazon Bedrock</strong> API call — using Claude Opus 4 — the function simultaneously determines: (1) whether the content is fraud-relevant, (2) what entities are present (BINs, SWIFT codes, Bitcoin wallets, IPs, email addresses), and (3) which fraud technique category applies (<em>MFA bypass, phishing kit, account takeover, CNP fraud, synthetic identity</em>). Combining three analyses into one call reduces Bedrock costs by ~3× compared to sequential calls.
       </p>
       <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0;">
-        <strong style="color:#f0f6fc;">Bedrock Guardrails</strong> screen every input for prompt injection and harmful content before Claude processes it. If Guardrails intervene, the content is flagged as non-relevant and quarantined — the pipeline continues without exposing the model to potentially adversarial dark web text.
+        <strong style="color:#f0f6fc;">Bedrock Guardrails</strong> screen every input for prompt injection and harmful content before Claude processes it. The Lambda function reaches Bedrock via the public API endpoint with IAM SigV4 authentication — no VPC placement is required, eliminating network complexity and cold-start latency. If Guardrails intervene, the content is flagged as non-relevant and quarantined — the pipeline continues without exposing the model to potentially adversarial dark web text.
       </p>
     </div>
   </div>
@@ -474,7 +480,7 @@
         The Lambda is invoked both from Step Functions (scheduled path) and reactively from a <strong style="color:#f0f6fc;">DynamoDB Streams</strong> event source — meaning convergence is evaluated the moment a new item lands, not just on the next 5-minute cycle. High-severity items (score ≥ 7/10) trigger an immediate alert regardless of convergence count.
       </p>
       <p style="font-size:13px; line-height:1.7; color:#c9d1d9; margin:0;">
-        Alerts are published to an <strong style="color:#f0f6fc;">Amazon SNS</strong> topic and delivered to a <strong style="color:#f0f6fc;">FIFO SQS</strong> queue for ordered delivery to downstream SIEM/SOAR systems. FIFO guarantees that multiple alerts about the same TTP are processed in the correct sequence — critical for accurate threat timelines. A Dead Letter Queue (DLQ) captures any failed deliveries for forensic review.
+        Alerts are published to an <strong style="color:#f0f6fc;">Amazon SNS FIFO</strong> topic (<code style="background:#161b22; padding:1px 5px; border-radius:3px; font-size:12px;">dark-web-fraud-alerts.fifo</code>) and delivered to a <strong style="color:#f0f6fc;">FIFO SQS</strong> queue for ordered delivery to downstream SIEM/SOAR systems. Both SNS and SQS are FIFO to guarantee exactly-once, ordered processing of campaign alerts. FIFO guarantees that multiple alerts about the same TTP are processed in the correct sequence — critical for accurate threat timelines. A Dead Letter Queue (DLQ) captures any failed deliveries for forensic review.
       </p>
     </div>
   </div>
