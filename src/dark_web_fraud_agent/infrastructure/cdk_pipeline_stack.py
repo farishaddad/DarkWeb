@@ -181,7 +181,18 @@ class DarkWebFraudPipelineStack(Stack):
             parameters={
                 "Cluster": cluster_arn,
                 "TaskDefinition": task_def_arn,
-                "LaunchType": "FARGATE",
+                "CapacityProviderStrategy": [
+                    {
+                        "CapacityProvider": "FARGATE_SPOT",
+                        "Weight": 2,
+                        "Base": 0,
+                    },
+                    {
+                        "CapacityProvider": "FARGATE",
+                        "Weight": 1,
+                        "Base": 1,  # At least 1 task on regular Fargate as fallback
+                    },
+                ],
                 "NetworkConfiguration": {
                     "AwsvpcConfiguration": {
                         "Subnets.$": "States.Array($.subnet_id)",

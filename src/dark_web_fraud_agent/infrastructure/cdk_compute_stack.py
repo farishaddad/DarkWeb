@@ -112,6 +112,7 @@ class DarkWebFraudComputeStack(Stack):
             vpc=vpc,
             container_insights_v2=ecs.ContainerInsights.ENHANCED,
         )
+        self.cluster.enable_fargate_capacity_providers()
 
         # =====================================================================
         # IAM Roles - Fargate task (task role + execution role)
@@ -314,13 +315,15 @@ class DarkWebFraudComputeStack(Stack):
         # =====================================================================
 
         common_lambda_kwargs = dict(
-            runtime=lambda_.Runtime.PYTHON_3_12,
+            runtime=lambda_.Runtime.PYTHON_3_13,
+            architecture=lambda_.Architecture.ARM_64,
             code=lambda_.Code.from_asset("src"),
             # VPC placement removed to avoid cross-stack dependency cycle.
             # Lambda functions reach AWS services (Bedrock, S3, DynamoDB, OpenSearch)
             # via public HTTPS endpoints with IAM auth. Add VPC placement back
             # once stacks are refactored into a single stack or use Fn.importValue.
             tracing=lambda_.Tracing.ACTIVE,
+            snap_start=lambda_.SnapStartConf.ON_PUBLISHED_VERSIONS,
         )
 
         # ---- Content Analyst -----------------------------------------------

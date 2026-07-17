@@ -434,6 +434,14 @@ class DarkWebFraudCoreStack(Stack):
         CfnOutput(self, "VpcId", value=self.vpc.vpc_id)
         CfnOutput(self, "BucketName", value=self.artifacts_bucket.bucket_name)
         CfnOutput(self, "KmsKeyArn", value=self.kms_key.key_arn)
+
+        # SSM parameter for cross-stack KMS ARN reference (avoids dependency cycles)
+        ssm.StringParameter(
+            self,
+            "KmsKeyArnParam",
+            parameter_name="/dark-web-fraud/kms-key-arn",
+            string_value=self.kms_key.key_arn,
+        )
         CfnOutput(
             self,
             "AgentStateTableName",
